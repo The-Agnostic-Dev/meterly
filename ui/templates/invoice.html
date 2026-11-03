@@ -1,0 +1,40 @@
+{{define "content"}}
+<h1>Service charge, {{month .Line.Month}} <small>Flat {{.Line.Flat.Label}}, {{.Line.Flat.Resident}}</small></h1>
+
+<div class="stats">
+  <div class="stat"><span>Amount</span><strong>{{.Line.Amount}}</strong><small>{{.Line.Flat.Type}}</small></div>
+  <div class="stat"><span>Paid</span><strong id="paid">{{.Line.Paid}}</strong></div>
+  <div class="stat"><span>Balance</span><strong id="balance">{{.Line.Balance}}</strong><small>due {{date .Line.DueOn}}</small></div>
+  <div class="stat"><span>Status</span><strong><span class="pill {{.Line.Status}}" id="status">{{.Line.Status}}</span></strong></div>
+</div>
+
+<div class="grid">
+  <section class="card">
+    <h2>Payments received</h2>
+    <table id="payments">
+      <thead><tr><th>Date</th><th class="num">Amount</th><th>Recorded by</th></tr></thead>
+      <tbody>
+      {{range .Line.Payments}}
+        <tr><td>{{date .ReceivedOn}}</td><td class="num">{{.Amount}}</td><td>{{.RecordedBy}}</td></tr>
+      {{else}}
+        <tr><td colspan="3">No payments yet.</td></tr>
+      {{end}}
+      </tbody>
+    </table>
+  </section>
+
+  {{if .CanRecord}}
+  <section class="card">
+    <h2>Record a payment</h2>
+    <form method="post" action="/charges/{{.Line.ID}}/payments" class="stack" id="payment-form">
+      <label>Amount received (₦) <input name="amount" id="payment-amount" inputmode="decimal" required></label>
+      <label>Received on <input type="date" name="received_on" id="payment-date" value="{{ymd .Today}}"></label>
+      <button type="submit">Record payment</button>
+      <p class="status-message" id="payment-message" role="status" aria-live="polite"></p>
+    </form>
+    <p class="hint">Payments cannot be more than the balance. Record any extra as credit on next month's invoice.</p>
+  </section>
+  {{end}}
+</div>
+<script src="/static/payments.js" defer></script>
+{{end}}

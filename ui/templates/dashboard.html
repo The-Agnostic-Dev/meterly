@@ -1,0 +1,38 @@
+{{define "content"}}
+<h1>Estate dashboard</h1>
+<div class="stats">
+  <div class="stat"><span>Flats</span><strong>{{.Flats}}</strong></div>
+  <div class="stat"><span>Token sales, {{month .Month}}</span><strong>{{.Sales}}</strong><small>{{.SalesCount}} tokens, {{.SalesUnits}} kWh</small></div>
+  <div class="stat"><span>Service charge outstanding</span><strong>{{.Outstanding}}</strong><small>all months</small></div>
+  <div class="stat {{if .Low}}warn{{end}}"><span>Meters below {{.LowLimit}} kWh</span><strong>{{len .Low}}</strong></div>
+</div>
+
+{{if .Low}}
+<section class="card">
+  <h2>Low balance</h2>
+  <table>
+    <thead><tr><th>Flat</th><th>Resident</th><th>Meter</th><th class="num">Units left (kWh)</th></tr></thead>
+    <tbody>
+    {{range .Low}}
+      <tr><td><a href="/flats/{{.Flat.ID}}">{{.Flat.Label}}</a></td><td>{{.Flat.Resident}}</td>
+        <td><a href="/meters/{{.Meter.ID}}">{{.Meter.Serial}}</a></td><td class="num">{{.Meter.Balance}}</td></tr>
+    {{end}}
+    </tbody>
+  </table>
+</section>
+{{end}}
+
+<section class="card">
+  <h2>Latest tokens</h2>
+  <table>
+    <thead><tr><th>Date</th><th>Flat</th><th>Receipt</th><th class="num">Amount</th><th class="num">Units (kWh)</th></tr></thead>
+    <tbody>
+    {{range .Latest}}
+      <tr><td>{{datetime .CreatedAt}}</td><td>{{.Flat.Label}}</td><td><a href="/purchases/{{.ID}}">{{.Ref}}</a></td>
+        <td class="num">{{.Amount}}</td><td class="num">{{.Units}}</td></tr>
+    {{end}}
+    </tbody>
+  </table>
+  <p><a href="/tokens">All tokens</a></p>
+</section>
+{{end}}

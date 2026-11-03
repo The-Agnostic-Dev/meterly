@@ -1,0 +1,12 @@
+services:
+  meterly:
+    build: .
+    ports:
+      - "5120:5120"
+    environment:
+      PORT: "5120"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:5120/healthz"]
+      interval: 10s
+      timeout: 3s
+      retries: 3

@@ -1,0 +1,89 @@
+{{define "content"}}
+<h1>Meter {{.Meter.Serial}} <small>Flat {{.Flat.Label}}, {{.Flat.Resident}}</small></h1>
+{{with .View.Notice}}<p class="notice" role="status">{{.}}</p>{{end}}
+
+<div class="stats">
+  <div class="stat {{if .Low}}warn{{end}}"><span>Units left</span><strong id="balance">{{.Meter.Balance}} kWh</strong></div>
+  <div class="stat"><span>Tariff</span><strong>Band {{.Band.Code}}</strong><small>{{.Band.Rate}} per kWh, {{.Band.Supply}}</small></div>
+</div>
+
+<div class="grid">
+  {{if .CanBuy}}
+  <section class="card">
+    <h2>Buy units</h2>
+    {{with .View.BuyError}}<p class="error" role="alert">{{.}}</p>{{end}}
+    <form method="post" action="/meters/{{.Meter.ID}}/buy" class="stack" id="buy-form">
+      <input type="hidden" name="request_id" value="{{.RequestID}}">
+      <label>Amount (₦) <input name="amount" id="amount" inputmode="decimal" value="{{.View.BuyAmount}}" placeholder="10,000" required></label>
+      <p class="hint">Between {{.Min}} and {{.Max}}. The amount includes 7.5% VAT; units are worked out from the rest at the Band {{.Band.Code}} rate.</p>
+      <button type="submit">Buy units</button>
+    </form>
+  </section>
+  {{end}}
+
+  <section class="card">
+    <h2>Recent tokens</h2>
+    <table id="recent-tokens">
+      <thead><tr><th>Date</th><th>Receipt</th><th>Token</th><th class="num">Amount</th><th class="num">kWh</th></tr></thead>
+      <tbody>
+      {{range .Recent}}
+        <tr data-time="{{iso .CreatedAt}}"><td>{{datetime .CreatedAt}}</td><td><a href="/purchases/{{.ID}}">{{.Ref}}</a></td>
+          <td class="token">{{.Token}}</td><td class="num">{{.Amount}}</td><td class="num">{{.Units}}</td></tr>
+      {{else}}
+        <tr><td colspan="5">No tokens bought yet.</td></tr>
+      {{end}}
+      </tbody>
+    </table>
+    {{if .Staff}}<p><a href="/tokens?meter={{.Meter.ID}}">All tokens for this meter</a></p>{{end}}
+  </section>
+</div>
+
+<section class="card">
+  <h2>Monthly consumption</h2>
+  <p class="hint">Used = last reading in the month minus the last reading before the month started.</p>
+  <table id="monthly">
+    <thead><tr><th>Month</th><th class="num">Opening</th><th class="num">Closing</th><th class="num">Used (kWh)</th></tr></thead>
+    <tbody>
+    {{range .Monthly}}
+      <tr data-month="{{.Month}}"><td>{{month .Month}}</td>
+      {{if .Known}}<td class="num">{{.Opening}}</td><td class="num">{{.Closing}}</td><td class="num used">{{.Consumption}}</td>
+      {{else}}<td class="num">-</td><td class="num">-</td><td class="num used">No reading</td>{{end}}</tr>
+    {{end}}
+    </tbody>
+  </table>
+</section>
+
+<section class="card">
+  <div class="card-head">
+    <h2>Meter readings</h2>
+    {{if .Manager}}<button type="button" data-action="add-reading">Add reading</button>{{end}}
+  </div>
+  {{with .View.ReadingError}}<p class="error" role="alert">{{.}}</p>{{end}}
+  {{if .Manager}}
+  <form method="post" action="/meters/{{.Meter.ID}}/readings" class="inline" id="new-reading-form" {{if not .View.ReadingError}}hidden{{end}}>
+    <label>Date <input type="date" name="date" id="reading-date" value="{{or .View.ReadingDate (ymd now)}}"></label>
+    <label>Reading (kWh) <input name="value" id="reading-value" inputmode="decimal" value="{{.View.ReadingValue}}" required></label>
+    <button type="submit">Save reading</button>
+  </form>
+  {{end}}
+  <table id="readings">
+    <thead><tr><th>Date</th><th class="num">Reading (kWh)</th><th>Taken by</th>{{if .Manager}}<th></th>{{end}}</tr></thead>
+    <tbody>
+    {{range .Readings}}
+      <tr data-reading-id="{{.ID}}" data-date="{{ymd .Date}}" data-value="{{.Value.Float}}">
+        <td>{{date .Date}}</td><td class="num">{{.Value}}</td><td>{{.TakenBy}}</td>
+        {{if $.Manager}}<td class="actions">
+          <form method="post" action="/readings/{{.ID}}" class="inline">
+            <input name="value" aria-label="Corrected reading" size="9" value="{{.Value.Float}}">
+            <button type="submit" class="small">Correct</button>
+          </form>
+          <form method="post" action="/readings/{{.ID}}/delete" class="inline" data-confirm="Remove this reading?">
+            <button type="submit" class="small danger">Remove</button>
+          </form>
+        </td>{{end}}
+      </tr>
+    {{end}}
+    </tbody>
+  </table>
+</section>
+{{end}}

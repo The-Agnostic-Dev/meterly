@@ -1,0 +1,43 @@
+{{define "content"}}
+<h1>Estate usage</h1>
+<form class="filters" method="get" action="/reports/usage">
+  <label>Month
+    <select name="month" id="month">{{range .Months}}<option value="{{.}}" {{if eq . $.Usage.Month}}selected{{end}}>{{month .}}</option>{{end}}</select>
+  </label>
+  <label>Block
+    <select name="block" id="block">
+      <option value="all">All blocks</option>
+      {{range .Blocks}}<option value="{{.}}" {{if eq . $.Usage.Block}}selected{{end}}>Block {{.}}</option>{{end}}
+    </select>
+  </label>
+  <button type="submit">Show</button>
+</form>
+<p class="hint">Meterly remembers the month and block you last picked here, so the report opens the same way next time.</p>
+
+<section id="usage" data-month="{{.Usage.Month}}" data-block="{{if .Usage.Block}}{{.Usage.Block}}{{else}}all{{end}}">
+  <h2>{{month .Usage.Month}}, {{if .Usage.Block}}Block {{.Usage.Block}}{{else}}all blocks{{end}}</h2>
+  <div class="stats">
+    <div class="stat"><span>Consumption</span><strong id="total-consumption">{{.Usage.Consumption}} kWh</strong>{{if .Usage.Missing}}<small>{{.Usage.Missing}} flats without readings</small>{{end}}</div>
+    <div class="stat"><span>Units bought</span><strong>{{.Usage.Bought}} kWh</strong><small>{{.Usage.Tokens}} tokens</small></div>
+    <div class="stat"><span>Token sales</span><strong>{{.Usage.Spend}}</strong></div>
+  </div>
+  <p class="hint">Click a column heading to sort. Consumption comes from meter readings; units bought come from tokens sold in the month.</p>
+  <table class="card sortable" id="usage-table">
+    <thead><tr>
+      <th>Flat</th><th>Resident</th><th>Band</th><th class="num">Opening</th><th class="num">Closing</th>
+      <th class="num">Used (kWh)</th><th class="num">Tokens</th><th class="num">Bought (kWh)</th><th class="num">Spend</th>
+    </tr></thead>
+    <tbody>
+    {{range .Usage.Rows}}
+      <tr data-flat="{{.Flat.Label}}">
+        <td><a href="/meters/{{.Flat.MeterID}}">{{.Flat.Label}}</a></td><td>{{.Flat.Resident}}</td><td>{{.Band}}</td>
+        {{if .Usage.Known}}<td class="num">{{.Usage.Opening}}</td><td class="num">{{.Usage.Closing}}</td><td class="num used">{{.Usage.Consumption}}</td>
+        {{else}}<td class="num">-</td><td class="num">-</td><td class="num used">-</td>{{end}}
+        <td class="num">{{.Tokens}}</td><td class="num">{{.Bought}}</td><td class="num">{{.Spend}}</td>
+      </tr>
+    {{end}}
+    </tbody>
+  </table>
+</section>
+<script src="/static/report.js" defer></script>
+{{end}}

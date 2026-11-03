@@ -1,0 +1,20 @@
+{{define "content"}}
+<section class="card narrow receipt">
+  <h1>Receipt {{.Purchase.Ref}}</h1>
+  <p class="token-big" id="token">{{.Purchase.Token}}</p>
+  <p class="hint">Enter this 20-digit token on the meter keypad, then press the blue key.</p>
+  <dl id="breakdown">
+    <dt>Flat</dt><dd>{{.Flat.Label}}, {{.Flat.Resident}}</dd>
+    <dt>Meter</dt><dd>{{.Meter.Serial}}</dd>
+    <dt>Date</dt><dd>{{datetime .Purchase.CreatedAt}}</dd>
+    <dt>Amount paid</dt><dd class="amount">{{.Purchase.Amount}}</dd>
+    <dt>VAT (7.5%)</dt><dd class="vat">{{.Purchase.Amount}}</dd>
+    <dt>Energy value</dt><dd class="net">{{.Purchase.Net}}</dd>
+    <dt>Tariff</dt><dd>Band {{.Band.Code}} at {{.Purchase.Rate}} per kWh</dd>
+    <dt>Units</dt><dd class="units">{{.Purchase.Units}} kWh</dd>
+    <dt>Bought by</dt><dd>{{.Purchase.BoughtBy}}</dd>
+  </dl>
+  <p class="hint">Amounts paid include 7.5% VAT. Units are the energy value divided by the tariff rate.</p>
+  <p><a href="/meters/{{.Meter.ID}}">Back to meter</a> · <button type="button" class="link" data-action="print">Print</button></p>
+</section>
+{{end}}

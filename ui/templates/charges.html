@@ -1,0 +1,35 @@
+{{define "content"}}
+<h1>Service charge</h1>
+<form class="filters" method="get" action="/charges">
+  <label>Month
+    <select name="month">{{range .Months}}<option value="{{.}}" {{if eq . $.Month}}selected{{end}}>{{month .}}</option>{{end}}</select>
+  </label>
+  <label>Status
+    <select name="status">
+      <option value="">All</option>
+      {{range .Statuses}}<option value="{{.}}" {{if eq . $.Status}}selected{{end}}>{{.}}</option>{{end}}
+    </select>
+  </label>
+  <button type="submit">Show</button>
+</form>
+
+<div class="stats">
+  <div class="stat"><span>Billed</span><strong id="billed">{{.Billed}}</strong></div>
+  <div class="stat"><span>Received</span><strong id="received">{{.Received}}</strong></div>
+  <div class="stat"><span>Outstanding</span><strong id="outstanding">{{.Outstanding}}</strong></div>
+</div>
+<p class="hint">Service charge is billed on the 1st and due on the 10th. Unpaid invoices become overdue after the due date.</p>
+
+<table class="card" id="invoices">
+  <thead><tr><th>Flat</th><th>Resident</th><th>Type</th><th class="num">Amount</th><th class="num">Paid</th><th class="num">Balance</th><th>Status</th></tr></thead>
+  <tbody>
+  {{range .Lines}}
+    <tr data-invoice-id="{{.ID}}"><td><a href="/charges/{{.ID}}">{{.Flat.Label}}</a></td><td>{{.Flat.Resident}}</td><td>{{.Flat.Type}}</td>
+      <td class="num">{{.Amount}}</td><td class="num">{{.Paid}}</td><td class="num balance">{{.Balance}}</td>
+      <td><span class="pill {{.Status}}">{{.Status}}</span></td></tr>
+  {{else}}
+    <tr><td colspan="7">No invoices match.</td></tr>
+  {{end}}
+  </tbody>
+</table>
+{{end}}

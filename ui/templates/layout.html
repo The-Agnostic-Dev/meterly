@@ -1,0 +1,37 @@
+{{define "layout"}}<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{.Title}} · Meterly</title>
+  <link rel="stylesheet" href="/static/app.css">
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="/">Meterly <small>Palmgrove Court</small></a>
+    {{with .User}}
+    <nav>
+      {{if $.Staff}}
+      <a href="/">Dashboard</a>
+      <a href="/flats">Flats</a>
+      <a href="/tokens">Token history</a>
+      <a href="/charges">Service charge</a>
+      <a href="/reports/usage">Estate usage</a>
+      {{else}}
+      <a href="/">My meter</a>
+      <a href="/flats/{{.FlatID}}">My flat</a>
+      {{end}}
+    </nav>
+    <form class="signout" method="post" action="/logout">
+      <span>{{.Name}}</span>
+      <button type="submit" class="link">Sign out</button>
+    </form>
+    {{end}}
+  </header>
+  <main>
+    {{template "content" .}}
+  </main>
+  <footer>Meterly for Palmgrove Court Estate, Lekki. Times shown in Lagos time (WAT).</footer>
+  <script src="/static/app.js" defer></script>
+</body>
+</html>{{end}}

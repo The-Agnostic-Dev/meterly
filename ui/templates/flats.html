@@ -1,0 +1,24 @@
+{{define "content"}}
+<h1>Flats &amp; residents</h1>
+<form class="filters" method="get" action="/flats">
+  <input type="search" name="q" value="{{.Query}}" placeholder="Search by name, flat or phone">
+  <button type="submit">Search</button>
+</form>
+<table class="card">
+  <thead><tr><th>Flat</th><th>Type</th><th>Resident</th><th>Phone</th><th>Band</th><th class="num">Units left (kWh)</th></tr></thead>
+  <tbody>
+  {{range .Rows}}
+    <tr>
+      <td><a href="/flats/{{.Flat.ID}}">{{.Flat.Label}}</a></td>
+      <td>{{.Flat.Type}}</td>
+      <td>{{.Flat.Resident}}</td>
+      <td>{{.Flat.Phone}}</td>
+      <td>{{.Meter.Band}}</td>
+      <td class="num"><a href="/meters/{{.Meter.ID}}">{{.Meter.Balance}}</a></td>
+    </tr>
+  {{else}}
+    <tr><td colspan="6">No flats match "{{.Query}}".</td></tr>
+  {{end}}
+  </tbody>
+</table>
+{{end}}

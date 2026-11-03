@@ -1,0 +1,8 @@
+/bin/
+/meterly
+*.test
+*.out
+.env
+.DS_Store
+.idea/
+.vscode/

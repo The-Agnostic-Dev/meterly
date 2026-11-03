@@ -1,0 +1,51 @@
+{{define "content"}}
+<h1>Flat {{.Flat.Label}} <small>{{.Flat.Type}}</small></h1>
+{{if .Saved}}<p class="notice" role="status">Resident details saved.</p>{{end}}
+
+<div class="grid">
+  <section class="card">
+    <h2>Household</h2>
+    {{if .Manager}}
+    <form method="post" action="/flats/{{.Flat.ID}}" class="stack" id="resident-form">
+      <label>Resident name <input name="name" id="name" value="{{.Form.Name}}"></label>
+      {{with .Form.Errors.name}}<p class="error">{{.}}</p>{{end}}
+      <label>Phone <input name="phone" id="phone" value="{{.Form.Phone}}" inputmode="tel"></label>
+      {{with .Form.Errors.phone}}<p class="error">{{.}}</p>{{end}}
+      <label>Email <input name="email" id="email" value="{{.Form.Email}}" type="text"></label>
+      {{with .Form.Errors.email}}<p class="error">{{.}}</p>{{end}}
+      <button type="submit">Save details</button>
+    </form>
+    {{else}}
+    <dl>
+      <dt>Resident</dt><dd>{{.Flat.Resident}}</dd>
+      <dt>Phone</dt><dd class="phone">{{.Flat.Phone}}</dd>
+      <dt>Email</dt><dd>{{.Flat.Email}}</dd>
+    </dl>
+    {{end}}
+  </section>
+
+  <section class="card">
+    <h2>Meter</h2>
+    <dl>
+      <dt>Meter number</dt><dd><a href="/meters/{{.Meter.ID}}">{{.Meter.Serial}}</a></dd>
+      <dt>Tariff</dt><dd>Band {{.Band.Code}}, {{.Band.Rate}} per kWh ({{.Band.Supply}})</dd>
+      <dt>Units left</dt><dd>{{.Meter.Balance}} kWh</dd>
+      <dt>Service charge</dt><dd>{{.Charge}} a month ({{.Flat.Type}})</dd>
+    </dl>
+  </section>
+</div>
+
+<section class="card">
+  <h2>Service charge invoices</h2>
+  <table>
+    <thead><tr><th>Month</th><th>Due</th><th class="num">Amount</th><th class="num">Paid</th><th class="num">Balance</th><th>Status</th></tr></thead>
+    <tbody>
+    {{range .Invoices}}
+      <tr><td><a href="/charges/{{.ID}}">{{month .Month}}</a></td><td>{{date .DueOn}}</td>
+        <td class="num">{{.Amount}}</td><td class="num">{{.Paid}}</td><td class="num">{{.Balance}}</td>
+        <td><span class="pill {{.Status}}">{{.Status}}</span></td></tr>
+    {{end}}
+    </tbody>
+  </table>
+</section>
+{{end}}

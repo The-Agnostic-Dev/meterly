@@ -1,0 +1,33 @@
+{{define "content"}}
+<h1>Token history</h1>
+<form class="filters" method="get" action="/tokens">
+  <label>Flat
+    <select name="meter">
+      <option value="">All flats</option>
+      {{range .Flats}}<option value="{{.MeterID}}" {{if eq .MeterID $.MeterID}}selected{{end}}>{{.Label}}, {{.Resident}}</option>{{end}}
+    </select>
+  </label>
+  <button type="submit">Show</button>
+</form>
+
+<p id="token-count">{{.Pager.Total}} tokens{{if .Selected.ID}} for {{.Selected.Label}}{{end}}, {{.Total}} in total.
+{{if .Pager.Total}}Showing {{.Pager.From}} to {{.Pager.To}} of {{.Pager.Total}}.{{end}}</p>
+
+<table class="card" id="tokens">
+  <thead><tr><th>Date</th><th>Receipt</th><th>Flat</th><th>Token</th><th class="num">Amount</th><th class="num">Units (kWh)</th><th>Bought by</th></tr></thead>
+  <tbody>
+  {{range .Rows}}
+    <tr data-ref="{{.Ref}}"><td>{{datetime .CreatedAt}}</td><td><a href="/purchases/{{.ID}}">{{.Ref}}</a></td><td>{{.Flat.Label}}</td>
+      <td class="token">{{.Token}}</td><td class="num">{{.Amount}}</td><td class="num">{{.Units}}</td><td>{{.BoughtBy}}</td></tr>
+  {{else}}
+    <tr><td colspan="7">No tokens yet.</td></tr>
+  {{end}}
+  </tbody>
+</table>
+
+<nav class="pager">
+  {{if .Pager.HasPrev}}<a href="/tokens?meter={{if .MeterID}}{{.MeterID}}{{end}}&page={{.Pager.Prev}}" rel="prev">Previous</a>{{end}}
+  <span>Page {{.Pager.Page}} of {{.Pager.Pages}}</span>
+  {{if .Pager.HasNext}}<a href="/tokens?meter={{if .MeterID}}{{.MeterID}}{{end}}&page={{.Pager.Next}}" rel="next">Next</a>{{end}}
+</nav>
+{{end}}
