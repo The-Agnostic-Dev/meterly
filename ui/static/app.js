@@ -11,7 +11,7 @@ document.querySelectorAll('[data-action="add-reading"]').forEach((button) => {
 })
 
 document.querySelectorAll('[data-action="print"]').forEach((button) => {
-  button.addEventListener('click', window.print)
+  button.addEventListener('click', () => window.print())
 })
 
 document.querySelectorAll('form[data-confirm]').forEach((form) => {
