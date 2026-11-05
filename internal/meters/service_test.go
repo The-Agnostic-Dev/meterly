@@ -70,9 +70,10 @@ func TestBuyLimits(t *testing.T) {
 }
 
 func TestRecentNewestFirst(t *testing.T) {
-	svc, _ := newTestService(t)
+	svc, st := newTestService(t)
+	at := clock.Now()
 	for _, id := range []string{"a", "b", "c"} {
-		if _, err := svc.Buy(context.Background(), BuyRequest{MeterID: 10, Amount: money.Naira(2_000), RequestID: id}); err != nil {
+		if _, err := st.AddPurchase(store.Purchase{MeterID: 10, Amount: money.Naira(2_000), RequestID: id, CreatedAt: at}); err != nil {
 			t.Fatal(err)
 		}
 	}

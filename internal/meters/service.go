@@ -131,7 +131,12 @@ func (s *Service) Recent(meterID, n int) []store.Purchase {
 	return out
 }
 
-func newestFirst(a, b store.Purchase) int { return b.CreatedAt.Compare(a.CreatedAt) }
+func newestFirst(a, b store.Purchase) int {
+	if c := b.CreatedAt.Compare(a.CreatedAt); c != 0 {
+		return c
+	}
+	return b.ID - a.ID
+}
 
 // SalesBetween sums purchases made in [from, to).
 func (s *Service) SalesBetween(from, to time.Time) (money.Kobo, energy.KWh, int) {
