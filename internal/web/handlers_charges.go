@@ -2,6 +2,7 @@ package web
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"slices"
 	"time"
@@ -87,8 +88,14 @@ func (s *Server) recordPayment(w http.ResponseWriter, r *http.Request) {
 	}
 	var inv store.Invoice
 	if err == nil {
+		inv, err = s.store.Invoice(id)
+	}
+	if err == nil && amount > inv.Balance() {
+		err = fmt.Errorf("%s is more than the outstanding balance of %s", amount, inv.Balance())
+	}
+	if err == nil {
 		inv, err = s.billing.RecordPayment(id, amount, receivedOn, currentUser(r).Name)
-	} else {
+	} else if inv.ID == 0 {
 		inv, _ = s.store.Invoice(id)
 	}
 	if inv.ID == 0 {
