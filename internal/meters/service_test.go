@@ -69,6 +69,23 @@ func TestBuyLimits(t *testing.T) {
 	}
 }
 
+func TestRecentNewestFirst(t *testing.T) {
+	svc, _ := newTestService(t)
+	for _, id := range []string{"a", "b", "c"} {
+		if _, err := svc.Buy(context.Background(), BuyRequest{MeterID: 10, Amount: money.Naira(2_000), RequestID: id}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	recent := svc.Recent(10, 5)
+	if len(recent) != 3 || recent[0].RequestID != "c" || recent[1].RequestID != "b" || recent[2].RequestID != "a" {
+		t.Fatalf("recent order: %v %v %v", recent[0].RequestID, recent[1].RequestID, recent[2].RequestID)
+	}
+	two := svc.Recent(10, 2)
+	if len(two) != 2 || two[0].RequestID != "c" || two[1].RequestID != "b" {
+		t.Fatalf("recent two: %v %v", two[0].RequestID, two[1].RequestID)
+	}
+}
+
 func TestHistoryNewestFirst(t *testing.T) {
 	svc, _ := newTestService(t)
 	for _, id := range []string{"a", "b", "c"} {
