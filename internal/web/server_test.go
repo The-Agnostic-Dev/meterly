@@ -6,10 +6,13 @@ import (
 	"net/http/cookiejar"
 	"net/http/httptest"
 	"net/url"
+	"strconv"
 	"strings"
 	"testing"
 
+	"github.com/palmgrove-estates/meterly/internal/clock"
 	"github.com/palmgrove-estates/meterly/internal/meters"
+	"github.com/palmgrove-estates/meterly/internal/money"
 	"github.com/palmgrove-estates/meterly/internal/seed"
 	"github.com/palmgrove-estates/meterly/internal/store"
 )
@@ -160,6 +163,77 @@ func TestReceiptPrintButton(t *testing.T) {
 	if !strings.Contains(js, `[data-action="print"]`) || !strings.Contains(js, "printPage") {
 		t.Fatal("app.js does not register printPage for the print button")
 	}
+}
+
+func TestRecordOverpaymentPersistsAndCredits(t *testing.T) {
+	st := store.New()
+	seed.Load(st)
+	srv, err := New(Deps{Store: st, Vendor: meters.NewDemoVendor(0)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ts := httptest.NewServer(srv.Handler())
+	t.Cleanup(ts.Close)
+	c := client(t, ts, "accounts@palmgrovecourt.ng")
+
+	thisMonth := clock.MonthKey(clock.Now())
+	var inv store.Invoice
+	for _, candidate := range st.Invoices() {
+		if candidate.FlatID == 114 && candidate.Month == thisMonth {
+			inv = candidate
+		}
+	}
+	if inv.ID == 0 {
+		t.Fatal("no current-month invoice for C2")
+	}
+
+	res, err := c.PostForm(ts.URL+"/charges/"+itoa(inv.ID)+"/payments", url.Values{"amount": {"40,000"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, _ := io.ReadAll(res.Body)
+	res.Body.Close()
+	if !strings.Contains(string(body), `"ok":true`) || !strings.Contains(string(body), "₦0.00") {
+		t.Fatalf("payment response: %s", body)
+	}
+
+	code, page := get(t, c, ts.URL+"/charges/"+itoa(inv.ID))
+	if code != http.StatusOK || !strings.Contains(page, "₦25,000.00") {
+		t.Fatalf("invoice page after refresh: status %d, payment row missing", code)
+	}
+
+	nextMonth := clock.MonthKey(clock.Now().AddDate(0, 1, 0))
+	var next *store.Invoice
+	for _, candidate := range st.Invoices() {
+		if candidate.FlatID == 114 && candidate.Month == nextMonth {
+			n := candidate
+			next = &n
+		}
+	}
+	if next == nil {
+		t.Fatal("no next-month invoice carrying the credit")
+	}
+	if len(next.Payments) != 1 || next.Payments[0].Amount != money.Naira(15_000) {
+		t.Fatalf("next-month credit = %+v", next.Payments)
+	}
+}
+
+func TestPaymentsJSOnlyShowsSuccessOnOK(t *testing.T) {
+	ts := newTestServer(t)
+	c := client(t, ts, "accounts@palmgrovecourt.ng")
+	code, js := get(t, c, ts.URL+"/static/payments.js")
+	if code != http.StatusOK {
+		t.Fatalf("payments.js: %d", code)
+	}
+	okBranch := strings.Index(js, "data.ok")
+	success := strings.Index(js, "Payment recorded")
+	if okBranch == -1 || success == -1 || okBranch > success {
+		t.Fatal("payments.js must branch on data.ok before showing 'Payment recorded'")
+	}
+}
+
+func itoa(n int) string {
+	return strings.TrimSpace(strings.ReplaceAll(strings.Trim(strings.TrimPrefix(strings.TrimSuffix(strings.Repeat(" ", 0), ""), ""), " ", "")) + strconv.Itoa(n), " ")
 }
 
 func TestPagerPositions(t *testing.T) {
