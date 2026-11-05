@@ -81,3 +81,16 @@ func TestHistoryNewestFirst(t *testing.T) {
 		t.Fatalf("history order: %v %v %v", h[0].RequestID, h[1].RequestID, h[2].RequestID)
 	}
 }
+
+func TestRecentNewestFirst(t *testing.T) {
+	svc, _ := newTestService(t)
+	for _, id := range []string{"a", "b", "c", "d", "e"} {
+		if _, err := svc.Buy(context.Background(), BuyRequest{MeterID: 10, Amount: money.Naira(2_000), RequestID: id}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	r := svc.Recent(10, 3)
+	if len(r) != 3 || r[0].RequestID != "e" || r[2].RequestID != "c" {
+		t.Fatalf("recent order: %v %v %v", r[0].RequestID, r[1].RequestID, r[2].RequestID)
+	}
+}
