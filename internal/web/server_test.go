@@ -12,7 +12,6 @@ import (
 
 	"github.com/palmgrove-estates/meterly/internal/clock"
 	"github.com/palmgrove-estates/meterly/internal/meters"
-	"github.com/palmgrove-estates/meterly/internal/money"
 	"github.com/palmgrove-estates/meterly/internal/seed"
 	"github.com/palmgrove-estates/meterly/internal/store"
 )
@@ -165,7 +164,7 @@ func TestReceiptPrintButton(t *testing.T) {
 	}
 }
 
-func TestRecordOverpaymentPersistsAndCredits(t *testing.T) {
+func TestRecordOverpaymentRefusedAndNotPersisted(t *testing.T) {
 	st := store.New()
 	seed.Load(st)
 	srv, err := New(Deps{Store: st, Vendor: meters.NewDemoVendor(0)})
@@ -193,28 +192,19 @@ func TestRecordOverpaymentPersistsAndCredits(t *testing.T) {
 	}
 	body, _ := io.ReadAll(res.Body)
 	res.Body.Close()
-	if !strings.Contains(string(body), `"ok":true`) || !strings.Contains(string(body), "₦0.00") {
+	if !strings.Contains(string(body), `"ok":false`) || !strings.Contains(string(body), "more than the outstanding balance") {
 		t.Fatalf("payment response: %s", body)
 	}
 
 	code, page := get(t, c, ts.URL+"/charges/"+itoa(inv.ID))
-	if code != http.StatusOK || !strings.Contains(page, "₦25,000.00") {
-		t.Fatalf("invoice page after refresh: status %d, payment row missing", code)
+	if code != http.StatusOK {
+		t.Fatalf("invoice page after refresh: status %d", code)
 	}
-
-	nextMonth := clock.MonthKey(clock.Now().AddDate(0, 1, 0))
-	var next *store.Invoice
-	for _, candidate := range st.Invoices() {
-		if candidate.FlatID == 114 && candidate.Month == nextMonth {
-			n := candidate
-			next = &n
-		}
+	if strings.Contains(page, "₦40,000.00") {
+		t.Fatal("refused payment appears on the invoice page")
 	}
-	if next == nil {
-		t.Fatal("no next-month invoice carrying the credit")
-	}
-	if len(next.Payments) != 1 || next.Payments[0].Amount != money.Naira(15_000) {
-		t.Fatalf("next-month credit = %+v", next.Payments)
+	if !strings.Contains(page, "₦25,000.00") {
+		t.Fatal("invoice page does not show the unchanged ₦25,000.00 balance")
 	}
 }
 
