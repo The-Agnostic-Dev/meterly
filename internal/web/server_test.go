@@ -100,6 +100,26 @@ func TestBuyUnitsShowsReceipt(t *testing.T) {
 	}
 }
 
+func TestReceiptFiguresAddUp(t *testing.T) {
+	ts := newTestServer(t)
+	c := client(t, ts, "chioma.okafor@gmail.com")
+	res, err := c.PostForm(ts.URL+"/meters/502/buy", url.Values{"amount": {"50,000"}, "request_id": {"t1"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, _ := io.ReadAll(res.Body)
+	res.Body.Close()
+	receipt := string(body)
+	if !strings.HasPrefix(res.Request.URL.Path, "/purchases/") {
+		t.Fatalf("ended on %s", res.Request.URL.Path)
+	}
+	for _, want := range []string{"₦50,000.00", "₦3,488.37", "₦46,511.63", "222.01 kWh"} {
+		if !strings.Contains(receipt, want) {
+			t.Errorf("receipt does not show %s", want)
+		}
+	}
+}
+
 func TestResidentDetailsSaved(t *testing.T) {
 	ts := newTestServer(t)
 	c := client(t, ts, "fm@palmgrovecourt.ng")

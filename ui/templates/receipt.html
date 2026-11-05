@@ -8,7 +8,7 @@
     <dt>Meter</dt><dd>{{.Meter.Serial}}</dd>
     <dt>Date</dt><dd>{{datetime .Purchase.CreatedAt}}</dd>
     <dt>Amount paid</dt><dd class="amount">{{.Purchase.Amount}}</dd>
-    <dt>VAT (7.5%)</dt><dd class="vat">{{.Purchase.Amount}}</dd>
+    <dt>VAT (7.5%)</dt><dd class="vat">{{.Purchase.VAT}}</dd>
     <dt>Energy value</dt><dd class="net">{{.Purchase.Net}}</dd>
     <dt>Tariff</dt><dd>Band {{.Band.Code}} at {{.Purchase.Rate}} per kWh</dd>
     <dt>Units</dt><dd class="units">{{.Purchase.Units}} kWh</dd>
