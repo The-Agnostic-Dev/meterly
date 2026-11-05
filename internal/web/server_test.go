@@ -113,8 +113,8 @@ func TestReceiptPrintButton(t *testing.T) {
 		t.Fatalf("ended on %s", res.Request.URL.Path)
 	}
 	page := string(body)
-	if !strings.Contains(page, `data-action="print"`) {
-		t.Fatal("receipt has no Print button")
+	if !strings.Contains(page, `<button type="button" data-action="print">`) {
+		t.Fatal("receipt Print button is not a type=button element with data-action=print")
 	}
 	if !strings.Contains(page, "/static/app.js") {
 		t.Fatal("receipt does not load /static/app.js")
@@ -135,6 +135,9 @@ func TestReceiptPrintButton(t *testing.T) {
 	}
 	if !strings.Contains(js, "addEventListener('click', printPage)") {
 		t.Fatal("app.js does not register printPage as the click listener")
+	}
+	if !strings.Contains(js, "querySelectorAll('[data-action=\"print\"]')") {
+		t.Fatal("app.js does not select the receipt's [data-action=\"print\"] buttons")
 	}
 }
 
