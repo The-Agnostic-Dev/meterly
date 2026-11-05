@@ -233,7 +233,7 @@ func TestPaymentsJSOnlyShowsSuccessOnOK(t *testing.T) {
 }
 
 func itoa(n int) string {
-	return strings.TrimSpace(strings.ReplaceAll(strings.Trim(strings.TrimPrefix(strings.TrimSuffix(strings.Repeat(" ", 0), ""), ""), " ", "")) + strconv.Itoa(n), " ")
+	return strconv.Itoa(n)
 }
 
 func TestPagerPositions(t *testing.T) {
