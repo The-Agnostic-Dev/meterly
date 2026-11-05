@@ -112,15 +112,29 @@ func TestReceiptPrintButton(t *testing.T) {
 	if !strings.HasPrefix(res.Request.URL.Path, "/purchases/") {
 		t.Fatalf("ended on %s", res.Request.URL.Path)
 	}
-	if !strings.Contains(string(body), `data-action="print"`) {
+	page := string(body)
+	if !strings.Contains(page, `data-action="print"`) {
 		t.Fatal("receipt has no Print button")
+	}
+	if !strings.Contains(page, "/static/app.js") {
+		t.Fatal("receipt does not load /static/app.js")
 	}
 	code, js := get(t, c, ts.URL+"/static/app.js")
 	if code != http.StatusOK {
 		t.Fatalf("app.js: %d", code)
 	}
-	if !strings.Contains(js, "window.print()") {
-		t.Fatal("app.js does not call window.print() from the click listener")
+	// Go has no browser to click the button with, so pin the wiring the bug
+	// broke: app.js must register a named printPage handler that calls
+	// window.print(). Registering window.print itself makes the browser call
+	// it with the button as `this`, which throws "Illegal invocation".
+	if strings.Contains(js, "addEventListener('click', window.print)") {
+		t.Fatal("app.js registers window.print itself as the click listener")
+	}
+	if !strings.Contains(js, "function printPage()") || !strings.Contains(js, "window.print()") {
+		t.Fatal("app.js does not define function printPage() calling window.print()")
+	}
+	if !strings.Contains(js, "addEventListener('click', printPage)") {
+		t.Fatal("app.js does not register printPage as the click listener")
 	}
 }
 

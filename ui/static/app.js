@@ -10,8 +10,15 @@ document.querySelectorAll('[data-action="add-reading"]').forEach((button) => {
   button.addEventListener('click', showReadingForm)
 })
 
+// Passing window.print straight to addEventListener makes the browser call
+// it with the button as `this`, which throws "Illegal invocation" and the
+// print dialog never opens. Wrap it in a named handler instead.
+function printPage() {
+  window.print()
+}
+
 document.querySelectorAll('[data-action="print"]').forEach((button) => {
-  button.addEventListener('click', () => window.print())
+  button.addEventListener('click', printPage)
 })
 
 document.querySelectorAll('form[data-confirm]').forEach((form) => {
