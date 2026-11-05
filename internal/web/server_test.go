@@ -114,6 +114,34 @@ func TestResidentDetailsSaved(t *testing.T) {
 	}
 }
 
+func TestReceiptPrintButton(t *testing.T) {
+	ts := newTestServer(t)
+	c := client(t, ts, "chioma.okafor@gmail.com")
+	res, err := c.PostForm(ts.URL+"/meters/502/buy", url.Values{"amount": {"10,000"}, "request_id": {"t1"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, _ := io.ReadAll(res.Body)
+	res.Body.Close()
+	receipt := string(body)
+	if !strings.HasPrefix(res.Request.URL.Path, "/purchases/") {
+		t.Fatalf("ended on %s", res.Request.URL.Path)
+	}
+	if !strings.Contains(receipt, `data-action="print"`) || !strings.Contains(receipt, `type="button"`) {
+		t.Fatal("receipt has no print button")
+	}
+	code, js := get(t, c, ts.URL+"/static/app.js")
+	if code != http.StatusOK {
+		t.Fatalf("app.js: %d", code)
+	}
+	if !strings.Contains(js, "function printPage(") || !strings.Contains(js, "window.print()") {
+		t.Fatal("app.js has no named printPage handler calling window.print()")
+	}
+	if !strings.Contains(js, `[data-action="print"]`) || !strings.Contains(js, "printPage") {
+		t.Fatal("app.js does not register printPage for the print button")
+	}
+}
+
 func TestPagerPositions(t *testing.T) {
 	p := NewPager(25, 2, 10)
 	if p.From() != 11 || p.To() != 20 || p.Pages() != 3 || !p.HasNext() || !p.HasPrev() {

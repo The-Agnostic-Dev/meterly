@@ -10,8 +10,12 @@ document.querySelectorAll('[data-action="add-reading"]').forEach((button) => {
   button.addEventListener('click', showReadingForm)
 })
 
+function printPage() {
+  window.print()
+}
+
 document.querySelectorAll('[data-action="print"]').forEach((button) => {
-  button.addEventListener('click', window.print)
+  button.addEventListener('click', printPage)
 })
 
 document.querySelectorAll('form[data-confirm]').forEach((form) => {
