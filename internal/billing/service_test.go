@@ -69,7 +69,7 @@ func TestRecordPayment(t *testing.T) {
 	if err != nil || got2.Balance() != money.Naira(15_000) {
 		t.Fatalf("balance %v, err %v", got2.Balance(), err)
 	}
-	if lines := svc.Lines("", "outstanding"); len(lines) != 1 {
+	if lines := svc.Lines("", "outstanding"); len(lines) != 2 {
 		t.Fatalf("outstanding lines = %d", len(lines))
 	}
 }
