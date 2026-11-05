@@ -124,7 +124,7 @@ func (s *Service) Recent(meterID, n int) []store.Purchase {
 			out = append(out, p)
 		}
 	}
-	slices.SortFunc(out, func(a, b store.Purchase) int { return a.CreatedAt.Compare(b.CreatedAt) })
+	slices.SortStableFunc(out, newestFirst)
 	if len(out) > n {
 		out = out[:n]
 	}
