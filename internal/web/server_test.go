@@ -164,7 +164,7 @@ func TestReceiptPrintButton(t *testing.T) {
 	}
 }
 
-func TestRecordOverpaymentRefusedAndNotPersisted(t *testing.T) {
+func TestRecordOverpaymentPersistsAndCarriesCredit(t *testing.T) {
 	st := store.New()
 	seed.Load(st)
 	srv, err := New(Deps{Store: st, Vendor: meters.NewDemoVendor(0)})
@@ -192,7 +192,7 @@ func TestRecordOverpaymentRefusedAndNotPersisted(t *testing.T) {
 	}
 	body, _ := io.ReadAll(res.Body)
 	res.Body.Close()
-	if !strings.Contains(string(body), `"ok":false`) || !strings.Contains(string(body), "more than the outstanding balance") {
+	if !strings.Contains(string(body), `"ok":true`) || !strings.Contains(string(body), `"balance":"₦0.00"`) {
 		t.Fatalf("payment response: %s", body)
 	}
 
@@ -200,11 +200,32 @@ func TestRecordOverpaymentRefusedAndNotPersisted(t *testing.T) {
 	if code != http.StatusOK {
 		t.Fatalf("invoice page after refresh: status %d", code)
 	}
-	if strings.Contains(page, "₦40,000.00") {
-		t.Fatal("refused payment appears on the invoice page")
+	if !strings.Contains(page, `<td class="num">₦25,000.00</td>`) {
+		t.Fatal("current invoice does not show the ₦25,000.00 payment row")
 	}
-	if !strings.Contains(page, "₦25,000.00") {
-		t.Fatal("invoice page does not show the unchanged ₦25,000.00 balance")
+	if !strings.Contains(page, `id="balance">₦0.00</strong>`) {
+		t.Fatal("current invoice does not show a ₦0.00 balance")
+	}
+
+	nextMonth := clock.MonthKey(clock.StartOfMonth(clock.Now()).AddDate(0, 1, 0))
+	var nextInv store.Invoice
+	for _, candidate := range st.Invoices() {
+		if candidate.FlatID == 114 && candidate.Month == nextMonth {
+			nextInv = candidate
+		}
+	}
+	if nextInv.ID == 0 {
+		t.Fatal("no next-month invoice for C2 after payment")
+	}
+	code, nextPage := get(t, c, ts.URL+"/charges/"+itoa(nextInv.ID))
+	if code != http.StatusOK {
+		t.Fatalf("next invoice page: status %d", code)
+	}
+	if !strings.Contains(nextPage, `<td class="num">₦15,000.00</td>`) {
+		t.Fatal("next invoice does not show the ₦15,000.00 credit payment row")
+	}
+	if !strings.Contains(nextPage, `id="balance">₦10,000.00</strong>`) {
+		t.Fatal("next invoice does not show a ₦10,000.00 balance")
 	}
 }
 
