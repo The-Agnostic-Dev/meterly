@@ -100,6 +100,30 @@ func TestBuyUnitsShowsReceipt(t *testing.T) {
 	}
 }
 
+func TestReceiptPrintButton(t *testing.T) {
+	ts := newTestServer(t)
+	c := client(t, ts, "chioma.okafor@gmail.com")
+	res, err := c.PostForm(ts.URL+"/meters/502/buy", url.Values{"amount": {"10,000"}, "request_id": {"t2"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, _ := io.ReadAll(res.Body)
+	res.Body.Close()
+	if !strings.HasPrefix(res.Request.URL.Path, "/purchases/") {
+		t.Fatalf("ended on %s", res.Request.URL.Path)
+	}
+	if !strings.Contains(string(body), `data-action="print"`) {
+		t.Fatal("receipt has no Print button")
+	}
+	code, js := get(t, c, ts.URL+"/static/app.js")
+	if code != http.StatusOK {
+		t.Fatalf("app.js: %d", code)
+	}
+	if !strings.Contains(js, "window.print()") {
+		t.Fatal("app.js does not call window.print() from the click listener")
+	}
+}
+
 func TestResidentDetailsSaved(t *testing.T) {
 	ts := newTestServer(t)
 	c := client(t, ts, "fm@palmgrovecourt.ng")
