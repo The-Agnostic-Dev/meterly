@@ -113,9 +113,9 @@ func Totals(lines []Line) (billed, received, outstanding money.Kobo) {
 // ErrPaymentAmount is returned for a zero or negative payment.
 var ErrPaymentAmount = errors.New("enter the amount received")
 
-// RecordPayment records money received against an invoice. Payments larger
-// than the balance are refused; the accountant records overpayments as credit
-// on the next invoice instead.
+// RecordPayment records money received against an invoice. Money above the
+// balance is carried as credit onto the flat's invoice for the next month,
+// which is created at the going rate if it does not exist yet.
 func (s *Service) RecordPayment(invoiceID int, amount money.Kobo, receivedOn time.Time, by string) (store.Invoice, error) {
 	if amount <= 0 {
 		inv, err := s.store.Invoice(invoiceID)
@@ -128,10 +128,59 @@ func (s *Service) RecordPayment(invoiceID int, amount money.Kobo, receivedOn tim
 		inv, _ := s.store.Invoice(invoiceID)
 		return inv, errors.New("the payment date cannot be in the future")
 	}
-	return s.store.AddPayment(invoiceID, store.Payment{Amount: amount, ReceivedOn: receivedOn, RecordedBy: by}, func(inv store.Invoice) error {
-		if amount > inv.Balance() {
-			return fmt.Errorf("%s is more than the outstanding balance of %s", amount, inv.Balance())
+	inv, err := s.store.Invoice(invoiceID)
+	if err != nil {
+		return store.Invoice{}, err
+	}
+	payment := amount
+	if payment > inv.Balance() {
+		payment = inv.Balance()
+	}
+	if payment > 0 {
+		inv, err = s.store.AddPayment(invoiceID, store.Payment{Amount: payment, ReceivedOn: receivedOn, RecordedBy: by}, func(cur store.Invoice) error {
+			if payment > cur.Balance() {
+				return fmt.Errorf("%s is more than the outstanding balance of %s", payment, cur.Balance())
+			}
+			return nil
+		})
+		if err != nil {
+			return inv, err
 		}
-		return nil
-	})
+	}
+	if credit := amount - payment; credit > 0 {
+		next, err := s.nextInvoice(inv)
+		if err != nil {
+			return inv, err
+		}
+		if _, err := s.store.AddPayment(next.ID, store.Payment{Amount: credit, ReceivedOn: receivedOn, RecordedBy: by}, func(store.Invoice) error { return nil }); err != nil {
+			return inv, err
+		}
+	}
+	return inv, nil
+}
+
+// nextInvoice returns the flat's invoice for the month after inv.Month,
+// creating it at the going rate for the flat type if it does not exist yet.
+func (s *Service) nextInvoice(inv store.Invoice) (store.Invoice, error) {
+	month, err := clock.ParseMonth(inv.Month)
+	if err != nil {
+		return store.Invoice{}, err
+	}
+	key := clock.MonthKey(month.AddDate(0, 1, 0))
+	for _, candidate := range s.store.Invoices() {
+		if candidate.FlatID == inv.FlatID && candidate.Month == key {
+			return candidate, nil
+		}
+	}
+	flat, err := s.store.Flat(inv.FlatID)
+	if err != nil {
+		return store.Invoice{}, err
+	}
+	return s.store.AddInvoice(store.Invoice{
+		FlatID:   inv.FlatID,
+		Month:    key,
+		Amount:   Charges[flat.Type],
+		IssuedOn: inv.IssuedOn.AddDate(0, 1, 0),
+		DueOn:    inv.DueOn.AddDate(0, 1, 0),
+	}), nil
 }

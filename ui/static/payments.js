@@ -29,9 +29,13 @@ if (form) {
         headers: { Accept: 'application/json' },
       })
       const data = await res.json()
-      updateSummary(data)
-      show('Payment recorded. Balance is now ' + data.balance + '.', 'ok')
-      form.querySelector('#payment-amount').value = ''
+      if (data.ok) {
+        updateSummary(data)
+        show('Payment recorded. Balance is now ' + data.balance + '.', 'ok')
+        form.querySelector('#payment-amount').value = ''
+      } else {
+        show(data.error, 'error')
+      }
     } catch (err) {
       show('Could not reach Meterly. Check your connection and try again.', 'error')
     } finally {
