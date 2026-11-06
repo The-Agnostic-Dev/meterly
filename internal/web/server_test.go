@@ -2,7 +2,6 @@ package web
 
 import (
 	"errors"
-	"fmt"
 	"io"
 	"net/http"
 	"net/http/cookiejar"
@@ -304,8 +303,11 @@ func TestRefundPurchaseRestoresBalanceOnce(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(fmt.Sprintf("%+v", p), "Tunde Bakare") {
-		t.Fatalf("refund does not record the resolving manager: %+v", p)
+	if !p.Refunded {
+		t.Fatalf("purchase %d was not marked refunded: %+v", p.ID, p)
+	}
+	if p.RefundedBy != "Tunde Bakare" {
+		t.Fatalf("refund recorded by %q, want Tunde Bakare", p.RefundedBy)
 	}
 	afterRefund, err := st.Meter(502)
 	if err != nil {
@@ -356,8 +358,11 @@ func TestCreditPurchaseAppliesNextMonthPaymentOnce(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(fmt.Sprintf("%+v", p), "Tunde Bakare") {
-		t.Fatalf("credit does not record the resolving manager: %+v", p)
+	if !p.Credited {
+		t.Fatalf("purchase %d was not marked credited: %+v", p.ID, p)
+	}
+	if p.CreditedBy != "Tunde Bakare" {
+		t.Fatalf("credit recorded by %q, want Tunde Bakare", p.CreditedBy)
 	}
 	afterCredit, err := st.Meter(502)
 	if err != nil {
@@ -367,16 +372,13 @@ func TestCreditPurchaseAppliesNextMonthPaymentOnce(t *testing.T) {
 		t.Fatalf("balance after credit = %d, want %d", afterCredit.Balance, before.Balance)
 	}
 
-	var creditInvoices []store.Invoice
-	for _, inv := range st.Invoices() {
-		if inv.CreditInvoiceID == p.ID {
-			creditInvoices = append(creditInvoices, inv)
-		}
+	if p.CreditInvoiceID == 0 {
+		t.Fatalf("purchase %d has no credit invoice", p.ID)
 	}
-	if len(creditInvoices) != 1 {
-		t.Fatalf("found %d credit invoices for purchase %d, want 1", len(creditInvoices), p.ID)
+	inv, err := st.Invoice(p.CreditInvoiceID)
+	if err != nil {
+		t.Fatal(err)
 	}
-	inv := creditInvoices[0]
 	if inv.FlatID != 102 {
 		t.Fatalf("credit invoice flat = %d, want 102", inv.FlatID)
 	}
