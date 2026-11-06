@@ -306,8 +306,8 @@ func TestRefundPurchaseRestoresBalanceOnce(t *testing.T) {
 	if !p.Refunded {
 		t.Fatalf("purchase %d was not marked refunded: %+v", p.ID, p)
 	}
-	if p.RefundedBy != "Tunde Bakare" {
-		t.Fatalf("refund recorded by %q, want Tunde Bakare", p.RefundedBy)
+	if p.ResolvedBy != "Tunde Bakare" {
+		t.Fatalf("refund recorded by %q, want Tunde Bakare", p.ResolvedBy)
 	}
 	afterRefund, err := st.Meter(502)
 	if err != nil {
@@ -361,8 +361,8 @@ func TestCreditPurchaseAppliesNextMonthPaymentOnce(t *testing.T) {
 	if !p.Credited {
 		t.Fatalf("purchase %d was not marked credited: %+v", p.ID, p)
 	}
-	if p.CreditedBy != "Tunde Bakare" {
-		t.Fatalf("credit recorded by %q, want Tunde Bakare", p.CreditedBy)
+	if p.ResolvedBy != "Tunde Bakare" {
+		t.Fatalf("credit recorded by %q, want Tunde Bakare", p.ResolvedBy)
 	}
 	afterCredit, err := st.Meter(502)
 	if err != nil {
