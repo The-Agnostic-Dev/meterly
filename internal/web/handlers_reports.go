@@ -9,8 +9,12 @@ import (
 
 var blocks = []string{"A", "B", "C"}
 
+func sessionPreferenceScope(r *http.Request) string {
+	return r.Header.Get("Cookie")
+}
+
 func (s *Server) usageReport(w http.ResponseWriter, r *http.Request) {
-	q := s.prefs.Remember(r, "month", "block")
+	q := s.prefs.Remember(r, sessionPreferenceScope(r), "month", "block")
 	months := clock.RecentMonths(6)
 	month := q.Get("month")
 	if !slices.Contains(months, month) {
