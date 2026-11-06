@@ -132,7 +132,7 @@ func (s *Service) CreditNextMonth(purchaseID int, by string) (store.Purchase, st
 	}
 	issuedOn := clock.Today()
 	dueOn := clock.StartOfDay(next.AddDate(0, 0, billing.DueDay-1))
-	return s.store.CreditPurchase(purchaseID, clock.MonthKey(next), charge, issuedOn, dueOn, by)
+	return s.store.CreditPurchase(purchaseID, clock.MonthKey(next), charge, issuedOn, dueOn, by, clock.Now())
 }
 
 // History lists purchases newest first. meterID 0 means every meter.

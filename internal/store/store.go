@@ -246,7 +246,7 @@ func (s *Store) RefundPurchase(id int, by string, at time.Time) (Purchase, error
 
 // CreditPurchase reverses the units of a purchase and applies its amount to
 // the flat's invoice for month, creating the invoice at charge when missing.
-func (s *Store) CreditPurchase(id int, month string, charge money.Kobo, issuedOn, dueOn time.Time, by string) (Purchase, Invoice, error) {
+func (s *Store) CreditPurchase(id int, month string, charge money.Kobo, issuedOn, dueOn time.Time, by string, at time.Time) (Purchase, Invoice, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	p, ok := s.purchaseLocked(id)
