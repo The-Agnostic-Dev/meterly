@@ -2,7 +2,9 @@ package meters
 
 import (
 	"context"
+	"sync"
 	"testing"
+	"time"
 
 	"github.com/palmgrove-estates/meterly/internal/energy"
 	"github.com/palmgrove-estates/meterly/internal/money"
@@ -57,6 +59,50 @@ func TestBuyRepeatedRequestReturnsFirstPurchase(t *testing.T) {
 	}
 	if again.ID != first.ID || len(st.Purchases()) != 1 {
 		t.Fatalf("resubmitted form created a second purchase")
+	}
+}
+
+func TestBuyConcurrentSameRequestCreatesOnePurchase(t *testing.T) {
+	st := store.New()
+	st.Load(nil,
+		[]store.Band{{Code: "A", Rate: 20950}, {Code: "B", Rate: 6330}},
+		[]store.Flat{{ID: 1, Block: "A", Number: 1, MeterID: 10}},
+		[]store.Meter{{ID: 10, FlatID: 1, Serial: "0471-0001-0001", Band: "A", Balance: energy.KWh(1000)}},
+	)
+	svc := NewService(st, NewDemoVendor(50*time.Millisecond))
+	const attempts = 6
+	var wg sync.WaitGroup
+	start := make(chan struct{})
+	purchases := make([]store.Purchase, attempts)
+	errs := make([]error, attempts)
+	for i := 0; i < attempts; i++ {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			<-start
+			purchases[i], errs[i] = svc.Buy(context.Background(), BuyRequest{
+				MeterID: 10, Amount: money.Naira(10_000), RequestID: "concurrent", BoughtBy: "test",
+			})
+		}(i)
+	}
+	close(start)
+	wg.Wait()
+	for _, err := range errs {
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	if stored := st.Purchases(); len(stored) != 1 {
+		t.Fatalf("stored %d purchases, want 1", len(stored))
+	}
+	for i := 1; i < attempts; i++ {
+		if purchases[i].ID != purchases[0].ID {
+			t.Fatalf("purchase %d has ID %d, want %d", i, purchases[i].ID, purchases[0].ID)
+		}
+	}
+	m, _ := st.Meter(10)
+	if m.Balance != energy.KWh(1000)+purchases[0].Units {
+		t.Fatalf("balance = %v, want one credit of %v", m.Balance, purchases[0].Units)
 	}
 }
 
