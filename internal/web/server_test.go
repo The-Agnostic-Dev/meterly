@@ -7,6 +7,7 @@ import (
 	"net/http/cookiejar"
 	"net/http/httptest"
 	"net/url"
+	"regexp"
 	"strconv"
 	"strings"
 	"sync"
@@ -231,6 +232,83 @@ func TestPagerPositions(t *testing.T) {
 	last := NewPager(25, 9, 10)
 	if last.Page != 3 || last.To() != 25 {
 		t.Fatalf("clamped: %+v", last)
+	}
+}
+
+func TestTokenHistoryListsEveryTokenAndReceipt(t *testing.T) {
+	ts, st := newTestServerWithStore(t, 0)
+	c := client(t, ts, "fm@palmgrovecourt.ng")
+
+	countPattern := regexp.MustCompile(`([0-9]+) tokens`)
+	rowPattern := regexp.MustCompile(`data-ref="([^"]+)"`)
+	nextTagPattern := regexp.MustCompile(`(?i)<a[^>]*rel="next"[^>]*>`)
+	hrefPattern := regexp.MustCompile(`(?i)href="([^"]*)"`)
+
+	var refs []string
+	headerCount := -1
+	pageURL := ts.URL + "/tokens"
+	for pageURL != "" {
+		current := pageURL
+		code, body := get(t, c, current)
+		if code != http.StatusOK {
+			t.Fatalf("%s: status %d", current, code)
+		}
+		if headerCount < 0 {
+			m := countPattern.FindStringSubmatch(body)
+			if m == nil {
+				t.Fatal("token history does not show a token count")
+			}
+			n, err := strconv.Atoi(m[1])
+			if err != nil {
+				t.Fatal(err)
+			}
+			headerCount = n
+		}
+		for _, m := range rowPattern.FindAllStringSubmatch(body, -1) {
+			refs = append(refs, m[1])
+		}
+		pageURL = ""
+		if tag := nextTagPattern.FindString(body); tag != "" {
+			m := hrefPattern.FindStringSubmatch(tag)
+			if m == nil {
+				t.Fatal("next link has no href")
+			}
+			base, err := url.Parse(current)
+			if err != nil {
+				t.Fatal(err)
+			}
+			href, err := url.Parse(strings.ReplaceAll(m[1], "&amp;", "&"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			pageURL = base.ResolveReference(href).String()
+		}
+	}
+
+	purchases := st.Purchases()
+	if headerCount != len(refs) {
+		t.Fatalf("header says %d tokens, gathered %d rows", headerCount, len(refs))
+	}
+	if headerCount != len(purchases) {
+		t.Fatalf("header says %d tokens, store has %d purchases", headerCount, len(purchases))
+	}
+	seen := map[string]int{}
+	for _, ref := range refs {
+		seen[ref]++
+	}
+	for _, p := range purchases {
+		if seen[p.Ref] != 1 {
+			t.Errorf("purchase %s appears %d times in token history, want 1", p.Ref, seen[p.Ref])
+		}
+	}
+	if len(seen) != len(purchases) {
+		t.Fatalf("token history has %d distinct refs, want %d", len(seen), len(purchases))
+	}
+	for _, p := range purchases {
+		code, _ := get(t, c, ts.URL+"/purchases/"+strconv.Itoa(p.ID))
+		if code != http.StatusOK {
+			t.Errorf("receipt for purchase %d: status %d", p.ID, code)
+		}
 	}
 }
 
