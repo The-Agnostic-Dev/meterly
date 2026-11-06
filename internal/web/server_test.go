@@ -1,17 +1,22 @@
 package web
 
 import (
+	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/cookiejar"
 	"net/http/httptest"
 	"net/url"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
 	"time"
 
+	"github.com/palmgrove-estates/meterly/internal/clock"
 	"github.com/palmgrove-estates/meterly/internal/meters"
+	"github.com/palmgrove-estates/meterly/internal/money"
 	"github.com/palmgrove-estates/meterly/internal/seed"
 	"github.com/palmgrove-estates/meterly/internal/store"
 )
@@ -227,5 +232,175 @@ func TestPagerPositions(t *testing.T) {
 	last := NewPager(25, 9, 10)
 	if last.Page != 3 || last.To() != 25 {
 		t.Fatalf("clamped: %+v", last)
+	}
+}
+
+func buyUnits(t *testing.T, c *http.Client, ts *httptest.Server, meterID int, amount, requestID string) {
+	t.Helper()
+	res, err := c.PostForm(ts.URL+"/meters/"+strconv.Itoa(meterID)+"/buy", url.Values{
+		"amount":     {amount},
+		"request_id": {requestID},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, _ := io.ReadAll(res.Body)
+	res.Body.Close()
+	if res.StatusCode >= http.StatusBadRequest {
+		t.Fatalf("buy %s: status %d: %s", requestID, res.StatusCode, body)
+	}
+}
+
+func resolvePurchase(t *testing.T, c *http.Client, ts *httptest.Server, purchaseID int, action string) {
+	t.Helper()
+	res, err := c.PostForm(ts.URL+"/purchases/"+strconv.Itoa(purchaseID)+"/"+action, url.Values{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, _ := io.ReadAll(res.Body)
+	res.Body.Close()
+	if res.StatusCode >= http.StatusInternalServerError {
+		t.Fatalf("%s purchase %d: status %d: %s", action, purchaseID, res.StatusCode, body)
+	}
+}
+
+func paidInMonth(st *store.Store, flatID int, month string) money.Kobo {
+	var total money.Kobo
+	for _, inv := range st.Invoices() {
+		if inv.FlatID == flatID && inv.Month == month {
+			total += inv.Paid()
+		}
+	}
+	return total
+}
+
+func TestRefundPurchaseRestoresBalanceOnce(t *testing.T) {
+	ts, st := newTestServerWithStore(t, 0)
+	resident := client(t, ts, "chioma.okafor@gmail.com")
+	manager := client(t, ts, "fm@palmgrovecourt.ng")
+
+	before, err := st.Meter(502)
+	if err != nil {
+		t.Fatal(err)
+	}
+	const requestID = "refund-flow"
+	buyUnits(t, resident, ts, 502, "10,000", requestID)
+
+	p, ok := st.PurchaseByRequest(requestID)
+	if !ok {
+		t.Fatalf("purchase %q was not stored", requestID)
+	}
+	afterBuy, err := st.Meter(502)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if afterBuy.Balance != before.Balance+p.Units {
+		t.Fatalf("balance after buy = %d, want %d", afterBuy.Balance, before.Balance+p.Units)
+	}
+
+	resolvePurchase(t, manager, ts, p.ID, "refund")
+
+	p, err = st.Purchase(p.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(fmt.Sprintf("%+v", p), "Tunde Bakare") {
+		t.Fatalf("refund does not record the resolving manager: %+v", p)
+	}
+	afterRefund, err := st.Meter(502)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if afterRefund.Balance != before.Balance {
+		t.Fatalf("balance after refund = %d, want %d", afterRefund.Balance, before.Balance)
+	}
+
+	resolvePurchase(t, manager, ts, p.ID, "refund")
+	afterDuplicate, err := st.Meter(502)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if afterDuplicate.Balance != before.Balance {
+		t.Fatalf("duplicate refund changed balance to %d, want %d", afterDuplicate.Balance, before.Balance)
+	}
+
+	if _, err := st.RefundPurchase(p.ID, "Tunde Bakare", clock.Now()); !errors.Is(err, store.ErrAlreadyResolved) {
+		t.Fatalf("second store refund error = %v, want %v", err, store.ErrAlreadyResolved)
+	}
+}
+
+func TestCreditPurchaseAppliesNextMonthPaymentOnce(t *testing.T) {
+	ts, st := newTestServerWithStore(t, 0)
+	resident := client(t, ts, "chioma.okafor@gmail.com")
+	manager := client(t, ts, "fm@palmgrovecourt.ng")
+
+	before, err := st.Meter(502)
+	if err != nil {
+		t.Fatal(err)
+	}
+	const requestID = "credit-flow"
+	buyUnits(t, resident, ts, 502, "10,000", requestID)
+
+	p, ok := st.PurchaseByRequest(requestID)
+	if !ok {
+		t.Fatalf("purchase %q was not stored", requestID)
+	}
+
+	nextMonth := clock.StartOfMonth(clock.Today()).AddDate(0, 1, 0)
+	monthKey := clock.MonthKey(nextMonth)
+	beforePaid := paidInMonth(st, 102, monthKey)
+
+	resolvePurchase(t, manager, ts, p.ID, "credit")
+
+	p, err = st.Purchase(p.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(fmt.Sprintf("%+v", p), "Tunde Bakare") {
+		t.Fatalf("credit does not record the resolving manager: %+v", p)
+	}
+	afterCredit, err := st.Meter(502)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if afterCredit.Balance != before.Balance {
+		t.Fatalf("balance after credit = %d, want %d", afterCredit.Balance, before.Balance)
+	}
+
+	var creditInvoices []store.Invoice
+	for _, inv := range st.Invoices() {
+		if inv.CreditInvoiceID == p.ID {
+			creditInvoices = append(creditInvoices, inv)
+		}
+	}
+	if len(creditInvoices) != 1 {
+		t.Fatalf("found %d credit invoices for purchase %d, want 1", len(creditInvoices), p.ID)
+	}
+	inv := creditInvoices[0]
+	if inv.FlatID != 102 {
+		t.Fatalf("credit invoice flat = %d, want 102", inv.FlatID)
+	}
+	if inv.Month != monthKey {
+		t.Fatalf("credit invoice month = %q, want %q", inv.Month, monthKey)
+	}
+	afterPaid := paidInMonth(st, 102, monthKey)
+	if afterPaid != beforePaid+p.Amount {
+		t.Fatalf("paid in %s = %d, want %d", monthKey, afterPaid, beforePaid+p.Amount)
+	}
+
+	resolvePurchase(t, manager, ts, p.ID, "credit")
+	afterDuplicate, err := st.Meter(502)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if afterDuplicate.Balance != before.Balance {
+		t.Fatalf("duplicate credit changed balance to %d, want %d", afterDuplicate.Balance, before.Balance)
+	}
+	if got := paidInMonth(st, 102, monthKey); got != afterPaid {
+		t.Fatalf("duplicate credit changed payments in %s to %d, want %d", monthKey, got, afterPaid)
+	}
+
+	if _, _, err := st.CreditPurchase(p.ID, monthKey, p.Amount, clock.Today(), clock.Today(), "Tunde Bakare", clock.Now()); !errors.Is(err, store.ErrAlreadyResolved) {
+		t.Fatalf("second store credit error = %v, want %v", err, store.ErrAlreadyResolved)
 	}
 }
