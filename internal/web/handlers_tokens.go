@@ -23,7 +23,7 @@ func (s *Server) tokenHistory(w http.ResponseWriter, r *http.Request) {
 	pg := NewPager(len(all), page, tokensPerPage)
 	var rows []store.Purchase
 	if first, last := pg.Window(); first <= last {
-		rows = all[first:last]
+		rows = all[first : last+1]
 	}
 
 	var selected store.Flat
