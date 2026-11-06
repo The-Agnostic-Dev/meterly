@@ -18,10 +18,10 @@ type Store struct {
 func New() *Store { return &Store{values: map[string]url.Values{}} }
 
 // Remember merges the named query parameters with what was chosen last time
-// on this page. Parameters present in the request win and are saved for
-// next time; missing ones fall back to the saved value.
-func (s *Store) Remember(r *http.Request, names ...string) url.Values {
-	key := r.URL.Path
+// in this scope on this page. Parameters present in the request win and are
+// saved for next time; missing ones fall back to the saved value.
+func (s *Store) Remember(r *http.Request, scope string, names ...string) url.Values {
+	key := scope + "\x00" + r.URL.Path
 	query := r.URL.Query()
 
 	s.mu.Lock()
