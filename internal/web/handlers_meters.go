@@ -109,6 +109,36 @@ func (s *Server) buyUnits(w http.ResponseWriter, r *http.Request) {
 	s.meterPage(w, r, http.StatusUnprocessableEntity, m, f, meterView{BuyError: err.Error(), BuyAmount: raw})
 }
 
+func (s *Server) refundPurchase(w http.ResponseWriter, r *http.Request) {
+	id, ok := pathID(r)
+	if !ok {
+		s.notFound(w, r)
+		return
+	}
+	if _, err := s.meters.Refund(id, currentUser(r).Name); err != nil {
+		if !errors.Is(err, store.ErrAlreadyResolved) {
+			s.fail(w, r, err)
+			return
+		}
+	}
+	http.Redirect(w, r, "/purchases/"+strconv.Itoa(id), http.StatusSeeOther)
+}
+
+func (s *Server) creditPurchase(w http.ResponseWriter, r *http.Request) {
+	id, ok := pathID(r)
+	if !ok {
+		s.notFound(w, r)
+		return
+	}
+	if _, _, err := s.meters.CreditNextMonth(id, currentUser(r).Name); err != nil {
+		if !errors.Is(err, store.ErrAlreadyResolved) {
+			s.fail(w, r, err)
+			return
+		}
+	}
+	http.Redirect(w, r, "/purchases/"+strconv.Itoa(id), http.StatusSeeOther)
+}
+
 func (s *Server) receipt(w http.ResponseWriter, r *http.Request) {
 	id, ok := pathID(r)
 	if !ok {

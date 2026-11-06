@@ -9,6 +9,7 @@ import (
 	"slices"
 	"time"
 
+	"github.com/palmgrove-estates/meterly/internal/billing"
 	"github.com/palmgrove-estates/meterly/internal/clock"
 	"github.com/palmgrove-estates/meterly/internal/energy"
 	"github.com/palmgrove-estates/meterly/internal/money"
@@ -102,6 +103,36 @@ func (s *Service) Buy(ctx context.Context, req BuyRequest) (store.Purchase, erro
 		BoughtBy:  req.BoughtBy,
 		CreatedAt: clock.Now(),
 	})
+}
+
+// Refund reverses a purchase and records the manager who resolved it.
+func (s *Service) Refund(purchaseID int, by string) (store.Purchase, error) {
+	return s.store.RefundPurchase(purchaseID, by, clock.Now())
+}
+
+// CreditNextMonth reverses a purchase and applies its amount to the flat's
+// service-charge invoice for the month after this one.
+func (s *Service) CreditNextMonth(purchaseID int, by string) (store.Purchase, store.Invoice, error) {
+	p, err := s.store.Purchase(purchaseID)
+	if err != nil {
+		return store.Purchase{}, store.Invoice{}, err
+	}
+	m, err := s.store.Meter(p.MeterID)
+	if err != nil {
+		return store.Purchase{}, store.Invoice{}, err
+	}
+	f, err := s.store.Flat(m.FlatID)
+	if err != nil {
+		return store.Purchase{}, store.Invoice{}, err
+	}
+	next := clock.StartOfMonth(clock.Today()).AddDate(0, 1, 0)
+	charge := billing.Charges[f.Type]
+	if charge == 0 {
+		charge = p.Amount
+	}
+	issuedOn := clock.Today()
+	dueOn := clock.StartOfDay(next.AddDate(0, 0, billing.DueDay-1))
+	return s.store.CreditPurchase(purchaseID, clock.MonthKey(next), charge, issuedOn, dueOn, by)
 }
 
 // History lists purchases newest first. meterID 0 means every meter.

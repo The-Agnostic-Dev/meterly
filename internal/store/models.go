@@ -68,9 +68,14 @@ type Purchase struct {
 	Rate      money.Kobo
 	Units     energy.KWh
 	Token     string
-	RequestID string
-	BoughtBy  string
-	CreatedAt time.Time
+	RequestID       string
+	BoughtBy        string
+	CreatedAt       time.Time
+	Refunded        bool
+	Credited        bool
+	ResolvedBy      string
+	ResolvedAt      time.Time
+	CreditInvoiceID int
 }
 
 // Reading is a cumulative register reading taken on a given day.

@@ -116,6 +116,8 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /meters/{id}", req(s.meterDetail))
 	mux.HandleFunc("POST /meters/{id}/buy", req(s.buyUnits, store.RoleManager, store.RoleResident))
 	mux.HandleFunc("GET /purchases/{id}", req(s.receipt))
+	mux.HandleFunc("POST /purchases/{id}/refund", req(s.refundPurchase, store.RoleManager))
+	mux.HandleFunc("POST /purchases/{id}/credit", req(s.creditPurchase, store.RoleManager))
 	mux.HandleFunc("POST /meters/{id}/readings", req(s.addReading, store.RoleManager))
 	mux.HandleFunc("POST /readings/{id}", req(s.correctReading, store.RoleManager))
 	mux.HandleFunc("POST /readings/{id}/delete", req(s.removeReading, store.RoleManager))
