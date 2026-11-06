@@ -21,12 +21,18 @@ func (s *Server) usageReport(w http.ResponseWriter, r *http.Request) {
 		month = months[0]
 	}
 	block := q.Get("block")
-	if !slices.Contains(blocks, block) {
-		block = ""
+	if block != "all" && !slices.Contains(blocks, block) {
+		block = "all"
 	}
-	usage := s.reports.Build(month, block)
+	filter := block
+	if filter == "all" {
+		filter = ""
+	}
+	usage := s.reports.Build(month, filter)
 	s.render(w, r, http.StatusOK, "usage.html", "Estate usage", map[string]any{
 		"Usage":  usage,
+		"Month":  month,
+		"Block":  block,
 		"Months": months,
 		"Blocks": blocks,
 	})
