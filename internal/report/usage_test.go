@@ -57,32 +57,32 @@ func TestCorrectionRefreshesFollowingMonthUsage(t *testing.T) {
 	lastMonth := thisMonth.AddDate(0, -1, 0)
 	lastKey, thisKey := clock.MonthKey(lastMonth), clock.MonthKey(thisMonth)
 
-	if _, err := rs.Add(503, lastMonth.AddDate(0, -1, 27), energy.KWh(99000), "t"); err != nil {
+	if _, err := rs.Add(503, lastMonth.AddDate(0, -1, 27), energy.KWh(9900000), "t"); err != nil {
 		t.Fatal(err)
 	}
-	corrected, err := rs.Add(503, lastMonth.AddDate(0, 0, 27), energy.KWh(101000), "t")
+	corrected, err := rs.Add(503, lastMonth.AddDate(0, 0, 27), energy.KWh(10100000), "t")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := rs.Add(503, clock.Today(), energy.KWh(103000), "t"); err != nil {
+	if _, err := rs.Add(503, clock.Today(), energy.KWh(10300000), "t"); err != nil {
 		t.Fatal(err)
 	}
 
-	if u := svc.Build(lastKey, ""); u.Consumption != 2000 {
+	if u := svc.Build(lastKey, ""); u.Consumption != 200000 {
 		t.Fatalf("last month before correction: consumption=%v", u.Consumption)
 	}
-	if u := svc.Build(thisKey, ""); u.Consumption != 2000 {
+	if u := svc.Build(thisKey, ""); u.Consumption != 200000 {
 		t.Fatalf("this month before correction: consumption=%v", u.Consumption)
 	}
 
-	if _, err := rs.Correct(corrected.ID, energy.KWh(102000), "t"); err != nil {
+	if _, err := rs.Correct(corrected.ID, energy.KWh(10200000), "t"); err != nil {
 		t.Fatal(err)
 	}
 
-	if u := svc.Build(lastKey, ""); u.Consumption != 3000 {
+	if u := svc.Build(lastKey, ""); u.Consumption != 300000 {
 		t.Fatalf("last month after correction: consumption=%v", u.Consumption)
 	}
-	if u := svc.Build(thisKey, ""); u.Consumption != 1000 {
+	if u := svc.Build(thisKey, ""); u.Consumption != 100000 {
 		t.Fatalf("this month after correction: consumption=%v", u.Consumption)
 	}
 }
