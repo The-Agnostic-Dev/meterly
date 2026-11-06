@@ -48,11 +48,26 @@ func NewService(s *store.Store) *Service {
 	return &Service{store: s, cache: map[string]map[int]readings.MonthUsage{}}
 }
 
-// Invalidate forgets the cached consumption for a month.
+// Invalidate forgets the cached consumption for a month and every later
+// month, since a corrected reading may be the opening value for them.
 func (s *Service) Invalidate(month string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	delete(s.cache, month)
+
+	start, err := clock.ParseMonth(month)
+	if err != nil {
+		delete(s.cache, month)
+		return
+	}
+	for key := range s.cache {
+		t, err := clock.ParseMonth(key)
+		if err != nil {
+			continue
+		}
+		if !t.Before(start) {
+			delete(s.cache, key)
+		}
+	}
 }
 
 func (s *Service) consumption(month string) map[int]readings.MonthUsage {
