@@ -63,6 +63,39 @@ func get(t *testing.T, c *http.Client, u string) (int, string) {
 	return res.StatusCode, string(b)
 }
 
+func selectedOption(t *testing.T, body, name string) string {
+	t.Helper()
+	selectPattern := regexp.MustCompile(`(?is)<select[^>]*\bname="` + regexp.QuoteMeta(name) + `"[^>]*>(.*?)</select>`)
+	m := selectPattern.FindStringSubmatch(body)
+	if m == nil {
+		t.Fatalf("report has no %s select", name)
+	}
+	optionPattern := regexp.MustCompile(`(?is)<option\b([^>]*)>(.*?)</option>`)
+	selectedPattern := regexp.MustCompile(`(?i)\bselected\b`)
+	valuePattern := regexp.MustCompile(`(?i)\bvalue="([^"]*)"`)
+	for _, option := range optionPattern.FindAllStringSubmatch(m[1], -1) {
+		if !selectedPattern.MatchString(option[1]) {
+			continue
+		}
+		if v := valuePattern.FindStringSubmatch(option[1]); v != nil {
+			return v[1]
+		}
+		return strings.TrimSpace(regexp.MustCompile(`<[^>]*>`).ReplaceAllString(option[2], ""))
+	}
+	t.Fatalf("report has no selected %s option", name)
+	return ""
+}
+
+func checkUsageSelection(t *testing.T, body, month, block string) {
+	t.Helper()
+	if got := selectedOption(t, body, "month"); got != month {
+		t.Errorf("selected month = %q, want %q", got, month)
+	}
+	if got := selectedOption(t, body, "block"); got != block {
+		t.Errorf("selected block = %q, want %q", got, block)
+	}
+}
+
 func TestPagesRenderForManager(t *testing.T) {
 	ts := newTestServer(t)
 	c := client(t, ts, "fm@palmgrovecourt.ng")
@@ -71,6 +104,55 @@ func TestPagesRenderForManager(t *testing.T) {
 			t.Errorf("%s: status %d", path, code)
 		}
 	}
+}
+
+func TestUsageReportDefaultsAndRemembersPerSession(t *testing.T) {
+	ts := newTestServer(t)
+	first := client(t, ts, "fm@palmgrovecourt.ng")
+	current := clock.MonthKey(clock.Today())
+
+	code, body := get(t, first, ts.URL+"/reports/usage")
+	if code != http.StatusOK {
+		t.Fatalf("usage report: status %d", code)
+	}
+	checkUsageSelection(t, body, current, "all")
+	for _, flat := range []string{"A1", "B4", "C1"} {
+		if !strings.Contains(body, flat) {
+			t.Errorf("usage report for all blocks does not list flat %s", flat)
+		}
+	}
+
+	lastMonth := clock.MonthKey(clock.StartOfMonth(clock.Today()).AddDate(0, -1, 0))
+	code, body = get(t, first, ts.URL+"/reports/usage?month="+url.QueryEscape(lastMonth)+"&block=B")
+	if code != http.StatusOK {
+		t.Fatalf("usage report for %s: status %d", lastMonth, code)
+	}
+	checkUsageSelection(t, body, lastMonth, "B")
+
+	code, body = get(t, first, ts.URL+"/reports/usage")
+	if code != http.StatusOK {
+		t.Fatalf("reopened usage report: status %d", code)
+	}
+	checkUsageSelection(t, body, lastMonth, "B")
+
+	other := client(t, ts, "fm@palmgrovecourt.ng")
+	code, body = get(t, other, ts.URL+"/reports/usage")
+	if code != http.StatusOK {
+		t.Fatalf("other session usage report: status %d", code)
+	}
+	checkUsageSelection(t, body, current, "all")
+
+	code, body = get(t, other, ts.URL+"/reports/usage?month="+url.QueryEscape(current)+"&block=A")
+	if code != http.StatusOK {
+		t.Fatalf("other session selection: status %d", code)
+	}
+	checkUsageSelection(t, body, current, "A")
+
+	code, body = get(t, first, ts.URL+"/reports/usage")
+	if code != http.StatusOK {
+		t.Fatalf("first session reopened after other session: status %d", code)
+	}
+	checkUsageSelection(t, body, lastMonth, "B")
 }
 
 func TestLoginRequired(t *testing.T) {
