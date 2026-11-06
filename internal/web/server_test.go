@@ -73,7 +73,8 @@ func selectedOption(t *testing.T, body, name string) string {
 	optionPattern := regexp.MustCompile(`(?is)<option\b([^>]*)>(.*?)</option>`)
 	selectedPattern := regexp.MustCompile(`(?i)\bselected\b`)
 	valuePattern := regexp.MustCompile(`(?i)\bvalue="([^"]*)"`)
-	for _, option := range optionPattern.FindAllStringSubmatch(m[1], -1) {
+	options := optionPattern.FindAllStringSubmatch(m[1], -1)
+	for _, option := range options {
 		if !selectedPattern.MatchString(option[1]) {
 			continue
 		}
@@ -81,6 +82,12 @@ func selectedOption(t *testing.T, body, name string) string {
 			return v[1]
 		}
 		return strings.TrimSpace(regexp.MustCompile(`<[^>]*>`).ReplaceAllString(option[2], ""))
+	}
+	if len(options) > 0 {
+		if v := valuePattern.FindStringSubmatch(options[0][1]); v != nil {
+			return v[1]
+		}
+		return strings.TrimSpace(regexp.MustCompile(`<[^>]*>`).ReplaceAllString(options[0][2], ""))
 	}
 	t.Fatalf("report has no selected %s option", name)
 	return ""
