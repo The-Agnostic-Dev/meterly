@@ -10,10 +10,14 @@ import (
 	"time"
 
 	"github.com/palmgrove-estates/meterly/internal/energy"
+	"github.com/palmgrove-estates/meterly/internal/money"
 )
 
 // ErrNotFound is returned when a record does not exist.
 var ErrNotFound = errors.New("not found")
+
+// ErrAlreadyResolved is returned when a purchase was already refunded or credited.
+var ErrAlreadyResolved = errors.New("purchase already resolved")
 
 // Store holds every record. All methods return copies.
 type Store struct {
@@ -185,10 +189,19 @@ func (s *Store) PurchaseByRequest(requestID string) (Purchase, bool) {
 	return Purchase{}, false
 }
 
-// AddPurchase saves a purchase and credits its units to the meter.
+// AddPurchase saves a purchase and credits its units to the meter. A non-empty
+// request id that is already saved returns the original purchase without
+// crediting the meter again.
 func (s *Store) AddPurchase(p Purchase) (Purchase, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if p.RequestID != "" {
+		for _, existing := range s.purchases {
+			if existing.RequestID == p.RequestID {
+				return *existing, nil
+			}
+		}
+	}
 	m, ok := s.meters[p.MeterID]
 	if !ok {
 		return Purchase{}, ErrNotFound
@@ -198,6 +211,91 @@ func (s *Store) AddPurchase(p Purchase) (Purchase, error) {
 	m.Balance += p.Units
 	s.purchases = append(s.purchases, &p)
 	return p, nil
+}
+
+func (s *Store) purchaseLocked(id int) (*Purchase, bool) {
+	for _, p := range s.purchases {
+		if p.ID == id {
+			return p, true
+		}
+	}
+	return nil, false
+}
+
+// RefundPurchase reverses the units of a purchase and records the refund.
+func (s *Store) RefundPurchase(id int, by string, at time.Time) (Purchase, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	p, ok := s.purchaseLocked(id)
+	if !ok {
+		return Purchase{}, ErrNotFound
+	}
+	if p.Refunded || p.Credited {
+		return *p, ErrAlreadyResolved
+	}
+	m, ok := s.meters[p.MeterID]
+	if !ok {
+		return *p, ErrNotFound
+	}
+	m.Balance -= p.Units
+	p.Refunded = true
+	p.ResolvedBy = by
+	p.ResolvedAt = at
+	return *p, nil
+}
+
+// CreditPurchase reverses the units of a purchase and applies its amount to
+// the flat's invoice for month, creating the invoice at charge when missing.
+func (s *Store) CreditPurchase(id int, month string, charge money.Kobo, issuedOn, dueOn time.Time, by string, at time.Time) (Purchase, Invoice, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	p, ok := s.purchaseLocked(id)
+	if !ok {
+		return Purchase{}, Invoice{}, ErrNotFound
+	}
+	if p.Refunded || p.Credited {
+		return *p, Invoice{}, ErrAlreadyResolved
+	}
+	m, ok := s.meters[p.MeterID]
+	if !ok {
+		return *p, Invoice{}, ErrNotFound
+	}
+	f, ok := s.flats[m.FlatID]
+	if !ok {
+		return *p, Invoice{}, ErrNotFound
+	}
+	var inv *Invoice
+	for _, candidate := range s.invoices {
+		if candidate.FlatID == f.ID && candidate.Month == month {
+			inv = candidate
+			break
+		}
+	}
+	if inv == nil {
+		inv = &Invoice{
+			ID:       s.id(),
+			FlatID:   f.ID,
+			Month:    month,
+			Amount:   charge,
+			IssuedOn: issuedOn,
+			DueOn:    dueOn,
+		}
+		s.invoices[inv.ID] = inv
+	}
+	m.Balance -= p.Units
+	p.Credited = true
+	p.ResolvedBy = by
+	p.ResolvedAt = at
+	p.CreditInvoiceID = inv.ID
+	inv.Payments = append(inv.Payments, Payment{
+		ID:         s.id(),
+		Amount:     p.Amount,
+		ReceivedOn: at,
+		RecordedBy: by,
+	})
+	c := *inv
+	c.Payments = slices.Clone(inv.Payments)
+	return *p, c, nil
 }
 
 // Readings lists a meter's readings, oldest first.

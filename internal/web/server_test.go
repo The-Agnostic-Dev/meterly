@@ -1,30 +1,42 @@
 package web
 
 import (
+	"errors"
 	"io"
 	"net/http"
 	"net/http/cookiejar"
 	"net/http/httptest"
 	"net/url"
+	"strconv"
 	"strings"
+	"sync"
 	"testing"
+	"time"
 
+	"github.com/palmgrove-estates/meterly/internal/clock"
 	"github.com/palmgrove-estates/meterly/internal/meters"
+	"github.com/palmgrove-estates/meterly/internal/money"
 	"github.com/palmgrove-estates/meterly/internal/seed"
 	"github.com/palmgrove-estates/meterly/internal/store"
 )
 
 func newTestServer(t *testing.T) *httptest.Server {
 	t.Helper()
+	ts, _ := newTestServerWithStore(t, 0)
+	return ts
+}
+
+func newTestServerWithStore(t *testing.T, delay time.Duration) (*httptest.Server, *store.Store) {
+	t.Helper()
 	st := store.New()
 	seed.Load(st)
-	srv, err := New(Deps{Store: st, Vendor: meters.NewDemoVendor(0)})
+	srv, err := New(Deps{Store: st, Vendor: meters.NewDemoVendor(delay)})
 	if err != nil {
 		t.Fatal(err)
 	}
 	ts := httptest.NewServer(srv.Handler())
 	t.Cleanup(ts.Close)
-	return ts
+	return ts, st
 }
 
 func client(t *testing.T, ts *httptest.Server, email string) *http.Client {
@@ -162,6 +174,55 @@ func TestReceiptPrintButton(t *testing.T) {
 	}
 }
 
+func TestConcurrentBuySameRequestMakesOneReceipt(t *testing.T) {
+	ts, st := newTestServerWithStore(t, 50*time.Millisecond)
+	c := client(t, ts, "chioma.okafor@gmail.com")
+	const attempts = 5
+	start := make(chan struct{})
+	paths := make([]string, attempts)
+	errs := make([]error, attempts)
+	var wg sync.WaitGroup
+	for i := 0; i < attempts; i++ {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			<-start
+			res, err := c.PostForm(ts.URL+"/meters/502/buy", url.Values{"amount": {"10,000"}, "request_id": {"race-buy"}})
+			if err != nil {
+				errs[i] = err
+				return
+			}
+			io.Copy(io.Discard, res.Body)
+			res.Body.Close()
+			paths[i] = res.Request.URL.Path
+		}(i)
+	}
+	close(start)
+	wg.Wait()
+	for _, err := range errs {
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	var stored int
+	for _, p := range st.Purchases() {
+		if p.RequestID == "race-buy" {
+			stored++
+		}
+	}
+	if stored != 1 {
+		t.Fatalf("stored %d purchases for one request, want 1", stored)
+	}
+	if !strings.HasPrefix(paths[0], "/purchases/") {
+		t.Fatalf("receipt path = %q", paths[0])
+	}
+	for _, path := range paths[1:] {
+		if path != paths[0] {
+			t.Fatalf("receipts differ: %v", paths)
+		}
+	}
+}
+
 func TestPagerPositions(t *testing.T) {
 	p := NewPager(25, 2, 10)
 	if p.From() != 11 || p.To() != 20 || p.Pages() != 3 || !p.HasNext() || !p.HasPrev() {
@@ -170,5 +231,178 @@ func TestPagerPositions(t *testing.T) {
 	last := NewPager(25, 9, 10)
 	if last.Page != 3 || last.To() != 25 {
 		t.Fatalf("clamped: %+v", last)
+	}
+}
+
+func buyUnits(t *testing.T, c *http.Client, ts *httptest.Server, meterID int, amount, requestID string) {
+	t.Helper()
+	res, err := c.PostForm(ts.URL+"/meters/"+strconv.Itoa(meterID)+"/buy", url.Values{
+		"amount":     {amount},
+		"request_id": {requestID},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, _ := io.ReadAll(res.Body)
+	res.Body.Close()
+	if res.StatusCode >= http.StatusBadRequest {
+		t.Fatalf("buy %s: status %d: %s", requestID, res.StatusCode, body)
+	}
+}
+
+func resolvePurchase(t *testing.T, c *http.Client, ts *httptest.Server, purchaseID int, action string) {
+	t.Helper()
+	res, err := c.PostForm(ts.URL+"/purchases/"+strconv.Itoa(purchaseID)+"/"+action, url.Values{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, _ := io.ReadAll(res.Body)
+	res.Body.Close()
+	if res.StatusCode >= http.StatusInternalServerError {
+		t.Fatalf("%s purchase %d: status %d: %s", action, purchaseID, res.StatusCode, body)
+	}
+}
+
+func paidInMonth(st *store.Store, flatID int, month string) money.Kobo {
+	var total money.Kobo
+	for _, inv := range st.Invoices() {
+		if inv.FlatID == flatID && inv.Month == month {
+			total += inv.Paid()
+		}
+	}
+	return total
+}
+
+func TestRefundPurchaseRestoresBalanceOnce(t *testing.T) {
+	ts, st := newTestServerWithStore(t, 0)
+	resident := client(t, ts, "chioma.okafor@gmail.com")
+	manager := client(t, ts, "fm@palmgrovecourt.ng")
+
+	before, err := st.Meter(502)
+	if err != nil {
+		t.Fatal(err)
+	}
+	const requestID = "refund-flow"
+	buyUnits(t, resident, ts, 502, "10,000", requestID)
+
+	p, ok := st.PurchaseByRequest(requestID)
+	if !ok {
+		t.Fatalf("purchase %q was not stored", requestID)
+	}
+	afterBuy, err := st.Meter(502)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if afterBuy.Balance != before.Balance+p.Units {
+		t.Fatalf("balance after buy = %d, want %d", afterBuy.Balance, before.Balance+p.Units)
+	}
+
+	resolvePurchase(t, manager, ts, p.ID, "refund")
+
+	p, err = st.Purchase(p.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !p.Refunded {
+		t.Fatalf("purchase %d was not marked refunded: %+v", p.ID, p)
+	}
+	if p.ResolvedBy != "Tunde Bakare" {
+		t.Fatalf("refund recorded by %q, want Tunde Bakare", p.ResolvedBy)
+	}
+	afterRefund, err := st.Meter(502)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if afterRefund.Balance != before.Balance {
+		t.Fatalf("balance after refund = %d, want %d", afterRefund.Balance, before.Balance)
+	}
+
+	resolvePurchase(t, manager, ts, p.ID, "refund")
+	afterDuplicate, err := st.Meter(502)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if afterDuplicate.Balance != before.Balance {
+		t.Fatalf("duplicate refund changed balance to %d, want %d", afterDuplicate.Balance, before.Balance)
+	}
+
+	if _, err := st.RefundPurchase(p.ID, "Tunde Bakare", clock.Now()); !errors.Is(err, store.ErrAlreadyResolved) {
+		t.Fatalf("second store refund error = %v, want %v", err, store.ErrAlreadyResolved)
+	}
+}
+
+func TestCreditPurchaseAppliesNextMonthPaymentOnce(t *testing.T) {
+	ts, st := newTestServerWithStore(t, 0)
+	resident := client(t, ts, "chioma.okafor@gmail.com")
+	manager := client(t, ts, "fm@palmgrovecourt.ng")
+
+	before, err := st.Meter(502)
+	if err != nil {
+		t.Fatal(err)
+	}
+	const requestID = "credit-flow"
+	buyUnits(t, resident, ts, 502, "10,000", requestID)
+
+	p, ok := st.PurchaseByRequest(requestID)
+	if !ok {
+		t.Fatalf("purchase %q was not stored", requestID)
+	}
+
+	nextMonth := clock.StartOfMonth(clock.Today()).AddDate(0, 1, 0)
+	monthKey := clock.MonthKey(nextMonth)
+	beforePaid := paidInMonth(st, 102, monthKey)
+
+	resolvePurchase(t, manager, ts, p.ID, "credit")
+
+	p, err = st.Purchase(p.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !p.Credited {
+		t.Fatalf("purchase %d was not marked credited: %+v", p.ID, p)
+	}
+	if p.ResolvedBy != "Tunde Bakare" {
+		t.Fatalf("credit recorded by %q, want Tunde Bakare", p.ResolvedBy)
+	}
+	afterCredit, err := st.Meter(502)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if afterCredit.Balance != before.Balance {
+		t.Fatalf("balance after credit = %d, want %d", afterCredit.Balance, before.Balance)
+	}
+
+	if p.CreditInvoiceID == 0 {
+		t.Fatalf("purchase %d has no credit invoice", p.ID)
+	}
+	inv, err := st.Invoice(p.CreditInvoiceID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if inv.FlatID != 102 {
+		t.Fatalf("credit invoice flat = %d, want 102", inv.FlatID)
+	}
+	if inv.Month != monthKey {
+		t.Fatalf("credit invoice month = %q, want %q", inv.Month, monthKey)
+	}
+	afterPaid := paidInMonth(st, 102, monthKey)
+	if afterPaid != beforePaid+p.Amount {
+		t.Fatalf("paid in %s = %d, want %d", monthKey, afterPaid, beforePaid+p.Amount)
+	}
+
+	resolvePurchase(t, manager, ts, p.ID, "credit")
+	afterDuplicate, err := st.Meter(502)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if afterDuplicate.Balance != before.Balance {
+		t.Fatalf("duplicate credit changed balance to %d, want %d", afterDuplicate.Balance, before.Balance)
+	}
+	if got := paidInMonth(st, 102, monthKey); got != afterPaid {
+		t.Fatalf("duplicate credit changed payments in %s to %d, want %d", monthKey, got, afterPaid)
+	}
+
+	if _, _, err := st.CreditPurchase(p.ID, monthKey, p.Amount, clock.Today(), clock.Today(), "Tunde Bakare", clock.Now()); !errors.Is(err, store.ErrAlreadyResolved) {
+		t.Fatalf("second store credit error = %v, want %v", err, store.ErrAlreadyResolved)
 	}
 }

@@ -1,6 +1,11 @@
 {{define "content"}}
 <section class="card narrow receipt">
   <h1>Receipt {{.Purchase.Ref}}</h1>
+  {{if .Purchase.Refunded}}
+  <p id="purchase-status" class="notice" data-testid="purchase-status">Refunded{{if .Purchase.ResolvedBy}} by {{.Purchase.ResolvedBy}}{{end}}{{if not .Purchase.ResolvedAt.IsZero}} on {{datetime .Purchase.ResolvedAt}}{{end}}.</p>
+  {{else if .Purchase.Credited}}
+  <p id="purchase-status" class="notice" data-testid="purchase-status">Credited to next month's bill{{if .Purchase.CreditInvoiceID}} on <a href="/charges/{{.Purchase.CreditInvoiceID}}">invoice {{.Purchase.CreditInvoiceID}}</a>{{end}}{{if .Purchase.ResolvedBy}} by {{.Purchase.ResolvedBy}}{{end}}{{if not .Purchase.ResolvedAt.IsZero}} on {{datetime .Purchase.ResolvedAt}}{{end}}.</p>
+  {{end}}
   <p class="token-big" id="token">{{.Purchase.Token}}</p>
   <p class="hint">Enter this 20-digit token on the meter keypad, then press the blue key.</p>
   <dl id="breakdown">
@@ -15,6 +20,14 @@
     <dt>Bought by</dt><dd>{{.Purchase.BoughtBy}}</dd>
   </dl>
   <p class="hint">Amounts paid include 7.5% VAT. Units are the energy value divided by the tariff rate.</p>
+  {{if and .Manager (not .Purchase.Refunded) (not .Purchase.Credited)}}
+  <form method="post" action="/purchases/{{.Purchase.ID}}/refund" data-testid="refund-purchase" onsubmit="return confirm('Refund this purchase?');">
+    <button type="submit">Refund</button>
+  </form>
+  <form method="post" action="/purchases/{{.Purchase.ID}}/credit" data-testid="credit-purchase" onsubmit="return confirm('Apply this amount to the next bill?');">
+    <button type="submit">Apply as next-month credit</button>
+  </form>
+  {{end}}
   <p><a href="/meters/{{.Meter.ID}}">Back to meter</a> · <button type="button" class="link" data-action="print">Print</button></p>
 </section>
 {{end}}
