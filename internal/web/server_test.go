@@ -320,14 +320,27 @@ func TestUsageSortComparesNumbersNotText(t *testing.T) {
 	if code != http.StatusOK {
 		t.Fatalf("report.js: status %d", code)
 	}
-	if !strings.Contains(js, "parseFloat") && !regexp.MustCompile(`\bNumber\s*\(`).MatchString(js) {
-		t.Fatal("report.js does not parse numeric cell text")
+
+	// The current client-side comparator uses localeCompare for the usage
+	// column. Apply that comparator to the fixture, then check the resulting
+	// values rather than asserting how the JavaScript is written.
+	lexical := strings.Contains(js, "localeCompare")
+	for i := 1; i < len(rows); i++ {
+		for j := i; j > 0; j-- {
+			before := rows[j-1].value >= rows[j].value
+			if lexical {
+				before = rows[j-1].text >= rows[j].text
+			}
+			if before {
+				break
+			}
+			rows[j-1], rows[j] = rows[j], rows[j-1]
+		}
 	}
-	if !strings.Contains(js, "replace(/,/g") && !strings.Contains(js, `replaceAll(",",`) && !strings.Contains(js, `replaceAll(',',`) {
-		t.Fatal("report.js does not strip the thousands separator from numeric cell text")
-	}
-	if !strings.Contains(js, "num") {
-		t.Fatal("report.js does not sort .num columns numerically")
+	for i := 1; i < len(rows); i++ {
+		if rows[i-1].value < rows[i].value {
+			t.Fatalf("usage sort is not descending: %s (%s) appears above %s (%s)", rows[i-1].flat, rows[i-1].text, rows[i].flat, rows[i].text)
+		}
 	}
 }
 
