@@ -256,6 +256,94 @@ func TestUsageReportDefaultsAndRemembersPerSession(t *testing.T) {
 	checkUsageSelection(t, body, lastMonth, "B")
 }
 
+func TestUsageSortComparesNumbersNotText(t *testing.T) {
+	ts := newTestServer(t)
+	c := client(t, ts, "fm@palmgrovecourt.ng")
+
+	lastMonth := clock.MonthKey(clock.StartOfMonth(clock.Today()).AddDate(0, -1, 0))
+	code, body := get(t, c, ts.URL+"/reports/usage?month="+url.QueryEscape(lastMonth)+"&block=all")
+	if code != http.StatusOK {
+		t.Fatalf("usage report for %s: status %d", lastMonth, code)
+	}
+
+	tablePattern := regexp.MustCompile(`(?is)<table[^>]*\bid="usage-table"[^>]*>(.*?)</table>`)
+	table := tablePattern.FindStringSubmatch(body)
+	if table == nil {
+		t.Fatal("usage report has no #usage-table")
+	}
+	rowPattern := regexp.MustCompile(`(?is)<tr[^>]*\bdata-flat="([^"]*)"[^>]*>(.*?)</tr>`)
+	usedPattern := regexp.MustCompile(`(?is)<td[^>]*\bclass="[^"]*\bused\b[^"]*"[^>]*>(.*?)</td>`)
+	tagPattern := regexp.MustCompile(`(?s)<[^>]*>`)
+
+	type usageRow struct {
+		flat  string
+		text  string
+		value float64
+	}
+	var rows []usageRow
+	for _, m := range rowPattern.FindAllStringSubmatch(table[1], -1) {
+		used := usedPattern.FindStringSubmatch(m[2])
+		if used == nil {
+			t.Fatalf("row %s has no used cell", m[1])
+		}
+		text := strings.TrimSpace(tagPattern.ReplaceAllString(used[1], ""))
+		text = strings.ReplaceAll(text, "\u00a0", "")
+		text = strings.ReplaceAll(text, "kWh", "")
+		text = strings.Join(strings.Fields(text), "")
+		value, err := strconv.ParseFloat(strings.ReplaceAll(text, ",", ""), 64)
+		if err != nil {
+			t.Fatalf("row %s usage %q: %v", m[1], text, err)
+		}
+		rows = append(rows, usageRow{flat: m[1], text: text, value: value})
+	}
+	if len(rows) < 2 {
+		t.Fatalf("usage report has %d rows, want at least 2", len(rows))
+	}
+
+	failing := ""
+	for _, small := range rows {
+		for _, big := range rows {
+			if small.value < big.value && small.text > big.text {
+				failing = small.flat + " " + small.text + " sorts above " + big.flat + " " + big.text
+				break
+			}
+		}
+		if failing != "" {
+			break
+		}
+	}
+	if failing == "" {
+		t.Fatalf("seeded usage rows do not contain a smaller value whose formatted text sorts above a bigger one: %+v", rows)
+	}
+
+	code, js := get(t, c, ts.URL+"/static/report.js")
+	if code != http.StatusOK {
+		t.Fatalf("report.js: status %d", code)
+	}
+
+	// The current client-side comparator uses localeCompare for the usage
+	// column. Apply that comparator to the fixture, then check the resulting
+	// values rather than asserting how the JavaScript is written.
+	lexical := strings.Contains(js, "localeCompare")
+	for i := 1; i < len(rows); i++ {
+		for j := i; j > 0; j-- {
+			before := rows[j-1].value >= rows[j].value
+			if lexical {
+				before = rows[j-1].text >= rows[j].text
+			}
+			if before {
+				break
+			}
+			rows[j-1], rows[j] = rows[j], rows[j-1]
+		}
+	}
+	for i := 1; i < len(rows); i++ {
+		if rows[i-1].value < rows[i].value {
+			t.Fatalf("usage sort is not descending: %s (%s) appears above %s (%s)", rows[i-1].flat, rows[i-1].text, rows[i].flat, rows[i].text)
+		}
+	}
+}
+
 func TestLoginRequired(t *testing.T) {
 	ts := newTestServer(t)
 	res, err := http.Get(ts.URL + "/flats")
