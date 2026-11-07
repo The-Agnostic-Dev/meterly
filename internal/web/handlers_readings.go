@@ -1,11 +1,13 @@
 package web
 
 import (
+	"errors"
 	"net/http"
 	"strconv"
 
 	"github.com/palmgrove-estates/meterly/internal/clock"
 	"github.com/palmgrove-estates/meterly/internal/energy"
+	"github.com/palmgrove-estates/meterly/internal/readings"
 )
 
 func (s *Server) addReading(w http.ResponseWriter, r *http.Request) {
@@ -26,7 +28,11 @@ func (s *Server) addReading(w http.ResponseWriter, r *http.Request) {
 	}
 	if err != nil {
 		v.ReadingError = err.Error()
-		s.meterPage(w, r, http.StatusUnprocessableEntity, m, f, v)
+		status := http.StatusUnprocessableEntity
+		if errors.Is(err, readings.ErrLower) {
+			status = http.StatusBadRequest
+		}
+		s.meterPage(w, r, status, m, f, v)
 		return
 	}
 	http.Redirect(w, r, "/meters/"+strconv.Itoa(m.ID)+"?done=reading-added", http.StatusSeeOther)
