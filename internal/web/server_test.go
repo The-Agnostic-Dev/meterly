@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/palmgrove-estates/meterly/internal/clock"
+	"github.com/palmgrove-estates/meterly/internal/energy"
 	"github.com/palmgrove-estates/meterly/internal/meters"
 	"github.com/palmgrove-estates/meterly/internal/money"
 	"github.com/palmgrove-estates/meterly/internal/seed"
@@ -110,6 +111,99 @@ func TestPagesRenderForManager(t *testing.T) {
 		if code, body := get(t, c, ts.URL+path); code != http.StatusOK || !strings.Contains(body, "Meterly") {
 			t.Errorf("%s: status %d", path, code)
 		}
+	}
+}
+
+func TestReadingLowerThanLatestIsRefused(t *testing.T) {
+	ts, st := newTestServerWithStore(t, 0)
+	c := client(t, ts, "fm@palmgrovecourt.ng")
+
+	history := st.Readings(508)
+	for _, r := range history {
+		if clock.MonthKey(r.Date) == clock.MonthKey(clock.Today()) {
+			if _, err := st.DeleteReading(r.ID); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	history = st.Readings(508)
+	if len(history) == 0 {
+		t.Fatal("meter 508 has no seeded readings")
+	}
+	latest := history[len(history)-1]
+	before := len(history)
+
+	code, body := get(t, c, ts.URL+"/meters/508")
+	if code != http.StatusOK {
+		t.Fatalf("meter page: status %d", code)
+	}
+	formPattern := regexp.MustCompile(`(?is)<form\b([^>]*\bid=["']new-reading-form["'][^>]*)>(.*?)</form>`)
+	form := formPattern.FindStringSubmatch(body)
+	if form == nil {
+		t.Fatal("meter page has no new-reading-form")
+	}
+	actionPattern := regexp.MustCompile(`(?i)\baction=["']([^"']*)["']`)
+	action := actionPattern.FindStringSubmatch(form[1])
+	if action == nil {
+		t.Fatal("new-reading-form has no action")
+	}
+	inputPattern := regexp.MustCompile(`(?is)<input\b([^>]*)>`)
+	namePattern := regexp.MustCompile(`(?i)\bname=["']([^"']*)["']`)
+	typePattern := regexp.MustCompile(`(?i)\btype=["']([^"']*)["']`)
+	dateName, valueName := "", ""
+	for _, input := range inputPattern.FindAllStringSubmatch(form[2], -1) {
+		attrs := input[1]
+		name := ""
+		if m := namePattern.FindStringSubmatch(attrs); m != nil {
+			name = m[1]
+		}
+		typ := ""
+		if m := typePattern.FindStringSubmatch(attrs); m != nil {
+			typ = m[1]
+		}
+		lowerName := strings.ToLower(name)
+		if strings.EqualFold(typ, "date") || strings.Contains(lowerName, "date") {
+			dateName = name
+		}
+		if strings.EqualFold(typ, "number") || strings.Contains(lowerName, "value") {
+			valueName = name
+		} else if valueName == "" && strings.Contains(lowerName, "reading") {
+			valueName = name
+		}
+	}
+	if dateName == "" {
+		dateName = "date"
+	}
+	if valueName == "" {
+		valueName = "value"
+	}
+	lower := latest.Value - energy.FromFloat(50)
+	res, err := c.PostForm(ts.URL+strings.ReplaceAll(action[1], "&amp;", "&"), url.Values{
+		dateName:  {clock.Today().Format("2006-01-02")},
+		valueName: {strconv.FormatFloat(lower.Float(), 'f', -1, 64)},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	resBody, _ := io.ReadAll(res.Body)
+	res.Body.Close()
+	if res.StatusCode != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400: %s", res.StatusCode, resBody)
+	}
+	if !strings.Contains(strings.ToLower(string(resBody)), "cannot be lower") {
+		t.Fatalf("response does not explain the reading cannot be lower: %s", resBody)
+	}
+	if got := len(st.Readings(508)); got != before {
+		t.Fatalf("readings = %d, want %d", got, before)
+	}
+
+	code, js := get(t, c, ts.URL+"/static/app.js")
+	if code != http.StatusOK {
+		t.Fatalf("app.js: %d", code)
+	}
+	lowerJS := strings.ToLower(js)
+	if !strings.Contains(lowerJS, "new-reading-form") || !strings.Contains(lowerJS, "cannot be lower") || !strings.Contains(lowerJS, "readings") {
+		t.Fatal("app.js does not validate #new-reading-form against the readings table")
 	}
 }
 

@@ -1,6 +1,7 @@
 package readings
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/palmgrove-estates/meterly/internal/clock"
@@ -53,6 +54,26 @@ func TestAddRefusesFutureDate(t *testing.T) {
 	svc, _ := setup(t)
 	if _, err := svc.Add(10, clock.Today().AddDate(0, 0, 1), energy.KWh(100), "test"); err != ErrFuture {
 		t.Fatalf("err = %v", err)
+	}
+}
+
+func TestAddRefusesReadingLowerThanLatest(t *testing.T) {
+	svc, st := setup(t)
+	today := clock.Today()
+	thisMonth := clock.StartOfMonth(today)
+	if _, err := svc.Add(10, thisMonth.AddDate(0, -1, -1), energy.FromFloat(1000), "test"); err != nil {
+		t.Fatal(err)
+	}
+	last, err := svc.Add(10, thisMonth.AddDate(0, 0, -1), energy.FromFloat(1100), "test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	before := len(st.Readings(10))
+	if _, err := svc.Add(10, today, last.Value-energy.FromFloat(50), "test"); err == nil || !strings.Contains(strings.ToLower(err.Error()), "cannot be lower") {
+		t.Fatalf("err = %v, want a reading cannot be lower", err)
+	}
+	if got := len(st.Readings(10)); got != before {
+		t.Fatalf("readings = %d, want %d", got, before)
 	}
 }
 
