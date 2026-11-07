@@ -58,7 +58,7 @@
     <h2>Meter readings</h2>
     {{if .Manager}}<button type="button" data-action="add-reading">Add reading</button>{{end}}
   </div>
-  {{with .View.ReadingError}}<p class="error" role="alert">{{.}}</p>{{end}}
+  <p class="error" role="alert" id="reading-error" {{if not .View.ReadingError}}hidden{{end}}>{{.View.ReadingError}}</p>
   {{if .Manager}}
   <form method="post" action="/meters/{{.Meter.ID}}/readings" class="inline" id="new-reading-form" {{if not .View.ReadingError}}hidden{{end}}>
     <label>Date <input type="date" name="date" id="reading-date" value="{{or .View.ReadingDate (ymd now)}}"></label>

@@ -16,6 +16,9 @@ import (
 // ErrFuture is returned for readings dated after today.
 var ErrFuture = errors.New("a reading cannot be dated in the future")
 
+// ErrLower is returned for readings below the meter's most recent reading.
+var ErrLower = errors.New("the reading cannot be lower than the last reading, check the figure on the meter")
+
 // Service records readings.
 type Service struct {
 	store    *store.Store
@@ -47,13 +50,12 @@ func (s *Service) Add(meterID int, date time.Time, value energy.KWh, by string) 
 	}
 	history := s.store.Readings(meterID)
 	if len(history) > 0 {
-		last := history[0]
+		last := history[len(history)-1]
 		if date.Before(last.Date) {
 			return store.Reading{}, fmt.Errorf("there is already a reading dated %s, new readings must be on or after it", last.Date.Format("02 Jan 2006"))
 		}
 		if value < last.Value {
-			return store.Reading{}, fmt.Errorf("%s kWh is lower than the last reading (%s kWh on %s), check the figure on the meter",
-				value, last.Value, last.Date.Format("02 Jan 2006"))
+			return store.Reading{}, ErrLower
 		}
 	}
 	r := s.store.AddReading(store.Reading{MeterID: meterID, Date: date, Value: value, TakenBy: by})
